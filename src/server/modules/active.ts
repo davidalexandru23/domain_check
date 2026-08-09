@@ -143,13 +143,22 @@ export const runTraceroute = async (host: string, enabled: boolean, timeoutMs: n
     const match = line.match(/^\s*(\d+)\s+(?:([^\s]+)\s+\()?(?:([\d.:a-fA-F]+)|\*)\)?(?:\s+.*?(\d+(?:\.\d+)?)?\s*ms?)?/);
     if (!match) continue;
     
-    const ptr = match[2];
-    const geo = ptr ? iataMap[ptr.match(iataRegex)?.[1]?.toLowerCase() ?? ""] : undefined;
+    let ptr = match[2];
+    let ip = match[3] === "*" ? undefined : match[3];
+    const hopNum = Number.parseInt(match[1], 10);
+
+    // Hide source local infrastructure
+    if (hopNum <= 3 && ip && (ip.startsWith("10.") || ip.startsWith("192.168.") || ip.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./))) {
+      ptr = "Solutie OSINT";
+      ip = "***.***.***.***";
+    }
+
+    const geo = ptr && ptr !== "Solutie OSINT" ? iataMap[ptr.match(iataRegex)?.[1]?.toLowerCase() ?? ""] : undefined;
     
     hops.push({
-      hop: Number.parseInt(match[1], 10),
+      hop: hopNum,
       host: ptr === "*" ? undefined : ptr,
-      ip: match[3] === "*" ? undefined : match[3],
+      ip: ip,
       rttMs: match[4] ? Number.parseFloat(match[4]) : undefined,
       geo: geo ? { city: geo, source: "PTR IATA" } : undefined
     });

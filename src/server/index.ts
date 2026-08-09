@@ -141,6 +141,6 @@ app.use((_req, res) => {
   res.sendFile(path.join(staticDir, "index.html"));
 });
 
-server.listen(serverConfig.port, "127.0.0.1", () => {
-  console.log(`Domain ASM OSINT listening on ${serverConfig.port}`);
+server.listen(serverConfig.port, "0.0.0.0", () => {
+  console.log(`Domain ASM OSINT listening on ${serverConfig.port} (0.0.0.0)`);
 });

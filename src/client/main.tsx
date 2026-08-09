@@ -215,26 +215,26 @@ function Results({ job }: { job: ScanJob }) {
 
             let narrative = "";
             if (isProxy) {
-               narrative += `Domeniul principal este protejat și rutat printr-un sistem Proxy/WAF/CDN (${proxies}). Aceasta înseamnă că adresa IP publică a site-ului nu reprezintă locația fizică reală a serverului. `;
-               if (hasLeak) {
-                 narrative += `Cu toate acestea, sistemul a reușit să identifice un **Origin Leak** (prin înregistrări DNS secundare, MX sau un certificat TLS expus). Adresa de origine candidat identificată este **${originBase?.ip}**. `;
-                 narrative += `Analizând această adresă, concluzionăm că **infrastructura de bază reală este găzduită de ${originBase?.provider}**.`;
-               } else {
-                 narrative += `Nu au putut fi găsite scurgeri de date pasive care să expună adresa de origine internă, deci host-ul real rămâne strict ascuns în spatele rețelei de proxy.`;
-               }
+              narrative += `Domeniul principal este protejat și rutat printr-un sistem Proxy/WAF/CDN (${proxies}). Aceasta înseamnă că adresa IP publică a site-ului nu reprezintă locația fizică reală a serverului. `;
+              if (hasLeak) {
+                narrative += `Cu toate acestea, sistemul a reușit să identifice un **Origin Leak** (prin înregistrări DNS secundare, MX sau un certificat TLS expus). Adresa de origine candidat identificată este **${originBase?.ip}**. `;
+                narrative += `Analizând această adresă, concluzionăm că **infrastructura de bază reală este găzduită de ${originBase?.provider}**.`;
+              } else {
+                narrative += `Nu au putut fi găsite scurgeri de date pasive care să expună adresa de origine internă, deci host-ul real rămâne strict ascuns în spatele rețelei de proxy.`;
+              }
             } else {
-               narrative += `Domeniul NU folosește un sistem Proxy/CDN recunoscut, ci pare a fi rezolvat direct către serverul final. `;
-               if (result.infrastructure.ipChains.length > 0) {
-                 const chain = result.infrastructure.ipChains[0];
-                 const realOrg = chain.allocation.originOrg || chain.allocation.allocationOwner || chain.allocation.networkName;
-                 narrative += `Verdictul infrastructurii este "${result.infrastructure.verdict}" (Încredere: ${result.infrastructure.confidence}). `;
-                 narrative += `Concluzionăm că **infrastructura de bază este găzduită direct de ${realOrg}**.`;
-               } else {
-                 narrative += `Din păcate, nu s-au putut extrage date BGP/RDAP pentru a determina proprietarul alocării.`;
-               }
+              narrative += `Domeniul NU folosește un sistem Proxy/CDN recunoscut, ci pare a fi rezolvat direct către serverul final. `;
+              if (result.infrastructure.ipChains.length > 0) {
+                const chain = result.infrastructure.ipChains[0];
+                const realOrg = chain.allocation.originOrg || chain.allocation.allocationOwner || chain.allocation.networkName;
+                narrative += `Verdictul infrastructurii este "${result.infrastructure.verdict}" (Încredere: ${result.infrastructure.confidence}). `;
+                narrative += `Concluzionăm că **infrastructura de bază este găzduită direct de ${realOrg}**.`;
+              } else {
+                narrative += `Din păcate, nu s-au putut extrage date BGP/RDAP pentru a determina proprietarul alocării.`;
+              }
             }
             // Parse simple markdown-like bold tags for UI
-            return <span dangerouslySetInnerHTML={{__html: narrative.replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyanx font-semibold">$1</strong>')}} />;
+            return <span dangerouslySetInnerHTML={{ __html: narrative.replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyanx font-semibold">$1</strong>') }} />;
           })()}
         </div>
 
@@ -253,13 +253,13 @@ function Results({ job }: { job: ScanJob }) {
 
         {result.origins && result.origins.length > 0 && (
           <div>
-             <h4 className="text-sm font-semibold mb-2 text-muted uppercase">IP-uri Origine</h4>
-             <DataTable rows={result.origins.map((origin) => ({
-                ip_origine: origin.ip,
-                provider_real: origin.provider,
-                incredere: origin.confidence.toUpperCase(),
-                sursa_scurgere: origin.source
-             }))} />
+            <h4 className="text-sm font-semibold mb-2 text-muted uppercase">IP-uri Origine</h4>
+            <DataTable rows={result.origins.map((origin) => ({
+              ip_origine: origin.ip,
+              provider_real: origin.provider,
+              incredere: origin.confidence.toUpperCase(),
+              sursa_scurgere: origin.source
+            }))} />
           </div>
         )}
       </Section>
@@ -310,7 +310,7 @@ function Documentation({ onBack }: { onBack: () => void }) {
         <ArrowLeft size={18} />
         Back to Dashboard
       </button>
-      
+
       <h1 className="text-3xl font-semibold text-cyanx mb-4 flex items-center gap-2">
         <BookOpen size={28} />
         Documentation & Parameters
@@ -468,7 +468,7 @@ function App() {
     wappalyzer: true, dirbust: true, faviconHash: true, quicProbe: true, dnsAlterations: true,
     dnsAxfr: true, jarmFingerprint: true
   });
-  
+
   const [job, setJob] = React.useState<ScanJob | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -509,11 +509,11 @@ function App() {
         const updatedJob = await api.getScan(job.id);
         setJob(updatedJob);
         if (updatedJob.status === "done" || updatedJob.status === "failed") {
-            await dbStorage.saveScan(updatedJob);
-            setHistory(prev => {
-                const filtered = prev.filter(p => p.id !== updatedJob.id);
-                return [updatedJob, ...filtered];
-            });
+          await dbStorage.saveScan(updatedJob);
+          setHistory(prev => {
+            const filtered = prev.filter(p => p.id !== updatedJob.id);
+            return [updatedJob, ...filtered];
+          });
         }
       } catch {
         setError("Could not refresh scan state");
@@ -536,13 +536,13 @@ function App() {
       setLoading(false);
     }
   };
-  
+
   const loadFromHistory = async (id: string) => {
     try {
-        const cachedJob = await dbStorage.getScan(id);
-        if (cachedJob) setJob(cachedJob);
+      const cachedJob = await dbStorage.getScan(id);
+      if (cachedJob) setJob(cachedJob);
     } catch (err) {
-        console.error("Failed to load history", err);
+      console.error("Failed to load history", err);
     }
   };
 
@@ -604,15 +604,15 @@ function App() {
           <div className="w-full lg:w-72 flex-shrink-0">
             <div className="card h-full flex flex-col">
               <div className="mb-4 flex items-center gap-2 text-xs uppercase tracking-wide text-muted border-b border-line pb-2 font-semibold">
-                <Clock size={14} /> Istoric Scanari (Cache)
+                <Clock size={14} /> Istoric Scanari
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 pr-2">
                 {history.length === 0 && (
                   <div className="text-sm text-muted p-4 text-center">Nu exista scanari in cache.</div>
                 )}
                 {history.map((item) => (
-                  <button 
-                    key={item.id} 
+                  <button
+                    key={item.id}
                     onClick={() => loadFromHistory(item.id)}
                     className={`w-full text-left p-3 rounded border transition-colors ${job?.id === item.id ? "border-cyanx bg-cyanx/10" : "border-line bg-panel2 hover:bg-panel3"}`}
                   >

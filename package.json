@@ -1,0 +1,43 @@
+{
+  "name": "domain-asm-osint",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts",
+    "dev:client": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build && tsc -p tsconfig.server.json",
+    "start": "node dist/server/index.js",
+    "server:build": "tsc -p tsconfig.server.json",
+    "start:prod": "node dist-server/server/index.js",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^7.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/pdf-parse": "^1.1.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/ws": "^8.5.12",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

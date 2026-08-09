@@ -149,11 +149,11 @@ export const runTraceroute = async (host: string, enabled: boolean, timeoutMs: n
 
     // Hide source local infrastructure
     if (hopNum <= 3 && ip && (ip.startsWith("10.") || ip.startsWith("192.168.") || ip.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./))) {
-      ptr = "Solutie OSINT";
-      ip = "***.***.***.***";
+      ptr = "Host Solutie";
+      ip = "-";
     }
 
-    const geo = ptr && ptr !== "Solutie OSINT" ? iataMap[ptr.match(iataRegex)?.[1]?.toLowerCase() ?? ""] : undefined;
+    const geo = ptr && ptr !== "Host Solutie" ? iataMap[ptr.match(iataRegex)?.[1]?.toLowerCase() ?? ""] : undefined;
     
     hops.push({
       hop: hopNum,

@@ -67,9 +67,31 @@ wss.on("connection", (socket, request) => {
   });
 });
 
+const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!serverConfig.appPassword) return next();
+  const provided = req.headers["x-app-password"];
+  if (provided === serverConfig.appPassword) return next();
+  res.status(401).json({ error: "Unauthorized" });
+};
+
+app.post("/api/auth/verify", (req, res) => {
+  if (!serverConfig.appPassword) {
+    res.json({ ok: true });
+    return;
+  }
+  const provided = req.headers["x-app-password"];
+  if (provided === serverConfig.appPassword) {
+    res.json({ ok: true });
+  } else {
+    res.status(401).json({ error: "Unauthorized" });
+  }
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, at: nowIso() });
 });
+
+app.use("/api/scans", authMiddleware);
 
 app.get("/api/scans", (_req, res) => {
   res.json(scanStore.list());

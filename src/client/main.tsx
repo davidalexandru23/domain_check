@@ -5,17 +5,34 @@ import type { ActiveOptions, ScanJob, ScanMode, ScanResult } from "../shared/typ
 import "./styles.css";
 
 const api = {
+  getHeaders() {
+    const pass = localStorage.getItem("app_password");
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (pass) headers["x-app-password"] = pass;
+    return headers;
+  },
+  async verifyAuth(password: string) {
+    const res = await fetch("/api/auth/verify", {
+      method: "POST",
+      headers: { "x-app-password": password }
+    });
+    return res.ok;
+  },
   async startScan(payload: { target: string; mode: ScanMode; options: Partial<ActiveOptions> }) {
     const res = await fetch("/api/scans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: this.getHeaders(),
       body: JSON.stringify(payload)
     });
+    if (res.status === 401) throw new Error("Unauthorized");
     if (!res.ok) throw new Error("Scan request failed");
     return (await res.json()) as ScanJob;
   },
   async getScan(id: string) {
-    const res = await fetch(`/api/scans/${id}`);
+    const res = await fetch(`/api/scans/${id}`, {
+      headers: this.getHeaders()
+    });
+    if (res.status === 401) throw new Error("Unauthorized");
     if (!res.ok) throw new Error("Scan fetch failed");
     return (await res.json()) as ScanJob;
   }
@@ -386,6 +403,62 @@ function Documentation({ onBack }: { onBack: () => void }) {
   );
 }
 
+function Login({ onLogin }: { onLogin: (password: string) => void }) {
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const ok = await api.verifyAuth(password);
+      if (ok) {
+        onLogin(password);
+      } else {
+        setError("Invalid password");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <div className="card w-full max-w-md">
+        <div className="mb-6 flex items-center justify-center gap-3 text-cyanx">
+          <Shield className="h-10 w-10" />
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Domain ASM</h1>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-muted">Access Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full rounded border border-line bg-panel2 px-3 py-2 text-ink placeholder-muted focus:border-cyanx focus:outline-none"
+              placeholder="Enter password..."
+              autoFocus
+            />
+          </div>
+          {error && <div className="text-sm text-redx">{error}</div>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center justify-center gap-2 rounded bg-cyanx px-4 py-2 font-medium text-panel transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Verifying..." : "Login"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [target, setTarget] = React.useState("example.com");
   const [options, setOptions] = React.useState<Partial<ActiveOptions>>({
@@ -400,6 +473,24 @@ function App() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [history, setHistory] = React.useState<ScanJob[]>([]);
+
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [checkingAuth, setCheckingAuth] = React.useState(true);
+
+  React.useEffect(() => {
+    const pass = localStorage.getItem("app_password");
+    if (!pass) {
+      setCheckingAuth(false);
+      return;
+    }
+    api.verifyAuth(pass).then(ok => {
+      if (ok) setIsAuthenticated(true);
+      else localStorage.removeItem("app_password");
+      setCheckingAuth(false);
+    }).catch(() => {
+      setCheckingAuth(false);
+    });
+  }, []);
 
   // Load history from DB on mount
   React.useEffect(() => {
@@ -456,6 +547,13 @@ function App() {
   };
 
   const lastProgress = job?.progress?.at(-1);
+
+  if (checkingAuth) {
+    return <div className="flex min-h-screen items-center justify-center text-muted">Checking authentication...</div>;
+  }
+  if (!isAuthenticated) {
+    return <Login onLogin={(p) => { localStorage.setItem("app_password", p); setIsAuthenticated(true); }} />;
+  }
 
   return (
     <main className="min-h-screen text-ink">

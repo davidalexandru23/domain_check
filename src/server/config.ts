@@ -14,6 +14,7 @@ const boolEnv = (name: string, fallback: boolean) => {
 
 export const serverConfig = {
   port: intEnv("PORT", 5105),
+  appPassword: process.env.APP_PASSWORD || "",
   defaultOptions: {
     nmap: boolEnv("ENABLE_NMAP", true),
     traceroute: boolEnv("ENABLE_TRACEROUTE", true),

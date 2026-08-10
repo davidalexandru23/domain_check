@@ -1,21 +1,20 @@
-## 2026-08-09T00:28:07Z
+## 2026-08-10T14:13:40Z
+<USER_REQUEST>
+You are the Project Orchestrator for the domain_check project.
 
-You are the Project Orchestrator for the project located at /Users/davidalexandru/Downloads/domain_check.
+Your objective is to execute the requirements detailed in:
+`/Users/davidalexandru/Downloads/domain_check/.agents/ORIGINAL_REQUEST.md`
 
-Please read the user requirements from /Users/davidalexandru/Downloads/domain_check/.agents/ORIGINAL_REQUEST.md.
-Your working directory for coordination files is /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/.
+Project Root Working Directory: `/Users/davidalexandru/Downloads/domain_check`
+Your Agent Directory: `/Users/davidalexandru/Downloads/domain_check/.agents/orchestrator`
 
-Requirements to implement:
-- R1. Enhanced Email Hunter: Improve email dorking logic (search.ts / email.ts) and frontend to capture and display detailed source context/snippets for emails.
-- R2. Subleased Infrastructure Fix: Debug and fix regression in infrastructure.ts so infrastructure owner inference works correctly (e.g. for edu.gov.ro).
-- R3. Active Discovery UI Force: Update frontend components (main.tsx) so active-discovery mode visually forces all toggles to be checked.
+Key Requirements Overview:
+1. Re-architect the Origin / Hosting / Ownership Correlation Engine to use an evidence-based scoring model (0-100).
+2. Distinguish domain ownership, IP allocation, ASN operation, hosting provider, application origin, and physical location with separate confidence scores.
+3. Expand correlation sources (DNS, subdomains, TLS certs, HTTP fingerprints, BGP/RIPE, PTR, MX categorization).
+4. Multi-stage performance pipeline: Passive discovery -> Candidate generation -> Cheap enrichment -> Candidate scoring -> Expensive verification -> Final ranking.
+5. Frontend UI updates (evidence breakdown, score 0-100, providers, location, human-readable explanations).
+6. Documentation page in frontend explaining search/scanning methods, cross-referencing, scoring.
 
-Please orchestrate implementation, verify all acceptance criteria (including building and running tests/scenarios), and update your progress.md. When completed, report victory back to Sentinel so Victory Auditor can be dispatched.
-
-## 2026-08-09T03:50:45Z
-
-Resume work at /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator. Read handoff.md, BRIEFING.md, ORIGINAL_REQUEST.md, DISPATCH.md, and progress.md for current state.
-Your parent is b157056c-b44b-4103-aca0-3236b33bceed — use this ID for all escalation and status reporting (send_message).
-
-Milestones M1, M2, M3 have all PASSED gate verification. Your remaining work is Milestone M4 (Final Integration & E2E Verification), M4 Gate verification (Reviewers, Challengers, Auditor), and reporting victory back to parent b157056c-b44b-4103-aca0-3236b33bceed.
-
+Please initialize your working directory `.agents/orchestrator/`, create your `BRIEFING.md`, `plan.md`, and `progress.md`, and start orchestrating your subagents. Update `progress.md` regularly as milestones progress. When all work is verified and complete, send a message claiming project victory.
+</USER_REQUEST>

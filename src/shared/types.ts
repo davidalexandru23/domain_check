@@ -5,7 +5,7 @@ export type ScanMode =
   | "network-map"
   | "dns-only";
 
-export type ScanStatus = "queued" | "running" | "done" | "failed";
+export type ScanStatus = "queued" | "running" | "done" | "failed" | "pending" | "scanning" | "completed";
 
 export type ActiveOptions = {
   nmap: boolean;
@@ -18,7 +18,6 @@ export type ActiveOptions = {
   infrastructureTrace: boolean;
   wappalyzer: boolean;
   dirbust: boolean;
-  faviconHash: boolean;
   quicProbe: boolean;
   dnsAlterations: boolean;
   dnsAxfr: boolean;
@@ -229,7 +228,6 @@ export type HttpProfile = {
   headers: Record<string, string>;
   cookies: Array<{ name: string; flags: string[] }>;
   technologies: string[];
-  faviconHash?: string;
   sensitiveFiles?: string[];
   vhostResponses?: Record<string, number>;
   quicSupported?: boolean;
@@ -237,6 +235,112 @@ export type HttpProfile = {
 };
 
 
+
+export type EvidenceType = "supporting" | "contradiction";
+export type EvidenceCategory =
+  | "dns"
+  | "tls"
+  | "http"
+  | "ptr"
+  | "asn"
+  | "waf"
+  | "subdomain"
+  | "mx"
+  | "port";
+
+export type EvidenceSignal = {
+  id: string;
+  type: EvidenceType;
+  category: EvidenceCategory;
+  weight: number;
+  title: string;
+  description: string;
+  observedData?: string;
+  source?: string;
+};
+
+export type EvidenceItem = EvidenceSignal;
+
+export type CandidateClassification =
+  | "likely-origin"
+  | "possible-origin"
+  | "unverified-leak"
+  | "cdn-proxy"
+  | "shared-hosting"
+  | "email-only";
+
+export type ScoreClassification = CandidateClassification;
+
+export type OriginCandidateDetailed = {
+  ip: string;
+  domain: string;
+  classification: CandidateClassification;
+  score: number;
+  totalScore?: number;
+  supportingSignals: EvidenceSignal[];
+  contradictionSignals: EvidenceSignal[];
+  provider: string;
+  asn: string;
+  location: string;
+  rawSignals: Record<string, any>;
+  explanation: string;
+  source?: string;
+  confidence?: "high" | "medium" | "low";
+};
+
+export type ConfidenceRating = "high" | "medium" | "low" | "none";
+
+export type ConceptConfidence = {
+  score: number;
+  rating: ConfidenceRating;
+  rationale: string;
+};
+
+export type OwnershipConceptType =
+  | "domainOwner"
+  | "ipAllocation"
+  | "asnOperation"
+  | "networkOperation"
+  | "hostingProvider"
+  | "applicationOrigin"
+  | "physicalLocation";
+
+export type OwnershipConcept = {
+  concept: OwnershipConceptType;
+  label: string;
+  identity: string;
+  confidence: number;
+  confidenceRating?: ConfidenceRating;
+  evidenceCount: number;
+  explanation: string;
+  details?: Record<string, any>;
+};
+
+export type DecoupledOwnershipModel = {
+  domainOwner: OwnershipConcept;
+  ipAllocation: OwnershipConcept;
+  asnOperation: OwnershipConcept;
+  networkOperation: OwnershipConcept;
+  hostingProvider: OwnershipConcept;
+  applicationOrigin: OwnershipConcept;
+  physicalLocation: OwnershipConcept;
+};
+
+export type MxInfrastructureSummary = {
+  domain: string;
+  mxRecords: string[];
+  ips: string[];
+  providers: string[];
+  isolatedFromWebOrigin: boolean;
+};
+
+export type NarrativeVerdict = {
+  summary: string;
+  classification: string;
+  confidenceScore: number;
+  explanation: string;
+  keyEvidence: string[];
+};
 
 export type RiskFinding = {
   id: string;
@@ -254,8 +358,15 @@ export type OriginCandidate = {
 };
 
 export type ScanResult = {
+  id?: string;
+  targetDomain?: string;
+  timestamp?: string;
+  status?: ScanStatus;
+  progress?: number;
+  currentStage?: string;
+  stageName?: string;
   domain: DomainProfile;
-  ownership: OwnershipTimelineItem[];
+  ownership: DecoupledOwnershipModel | OwnershipTimelineItem[] | any;
   dns: DnsRecordSet;
   ips: IpProfile[];
   network: NetworkHop[];
@@ -268,6 +379,12 @@ export type ScanResult = {
   risks: RiskFinding[];
   warnings: string[];
   origins: OriginCandidate[];
+  candidates: OriginCandidateDetailed[];
+  topOriginCandidate?: OriginCandidateDetailed;
+  decoupledOwnership?: DecoupledOwnershipModel;
+  ownershipModel?: DecoupledOwnershipModel;
+  mxInfrastructure: MxInfrastructureSummary;
+  narrativeVerdict: NarrativeVerdict;
 };
 
 export type ScanProgress = {

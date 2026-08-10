@@ -49,7 +49,6 @@ const defaultOptions: Partial<ActiveOptions> = {
   infrastructureTrace: true,
   wappalyzer: true,
   dirbust: true,
-  faviconHash: true,
   quicProbe: true,
   dnsAlterations: true,
   dnsAxfr: true,
@@ -155,6 +154,88 @@ function DataTable({ rows }: { rows: Array<Record<string, React.ReactNode>> }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function ScoreBar({ score }: { score: number }) {
+  const tone = score >= 70 ? "bg-greenx" : score >= 40 ? "bg-amberx" : "bg-redx";
+  return (
+    <div className="flex items-center gap-3">
+      <div className="h-2 w-36 rounded bg-panel2">
+        <div className={`h-2 rounded ${tone}`} style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+      </div>
+      <span className="font-semibold">{score}/100</span>
+    </div>
+  );
+}
+
+function EvidenceList({ title, items, tone }: { title: string; items: ScanResult["candidates"][number]["supportingSignals"]; tone: "green" | "red" }) {
+  const color = tone === "green" ? "text-greenx" : "text-redx";
+  return (
+    <div>
+      <div className="mb-2 text-xs uppercase tracking-wide text-muted">{title}</div>
+      {items.length === 0 ? (
+        <div className="text-sm text-muted">niciun semnal</div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={`${item.id}-${item.observedData ?? ""}`} className="rounded border border-line bg-panel2 p-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium">{item.title}</span>
+                <span className={color}>{item.weight > 0 ? `+${item.weight}` : item.weight}</span>
+              </div>
+              <div className="mt-1 text-muted">{item.description}</div>
+              {item.observedData && <div className="mt-1 break-all text-xs text-muted">{item.observedData}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CandidateEvidence({ result }: { result: ScanResult }) {
+  const candidates = [...(result.candidates ?? [])].sort((a, b) => b.score - a.score);
+  return (
+    <Section title="Candidati Origin si Evidence Score" icon={<Radar size={18} />}>
+      {result.narrativeVerdict && (
+        <div className="mb-4 rounded border border-line bg-panel2 p-4">
+          <div className="text-sm uppercase tracking-wide text-muted">Verdict narativ</div>
+          <div className="mt-2 text-lg font-semibold text-cyanx">{result.narrativeVerdict.summary}</div>
+          <div className="mt-2 text-sm text-muted">{result.narrativeVerdict.explanation}</div>
+        </div>
+      )}
+      {candidates.length === 0 ? (
+        <div className="empty">Nu exista candidati origin calculati</div>
+      ) : (
+        <div className="space-y-4">
+          {candidates.map((candidate) => (
+            <div key={candidate.ip} className="rounded border border-line bg-panel p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-cyanx" />
+                    <h3 className="text-xl font-semibold">{candidate.ip}</h3>
+                  </div>
+                  <div className="mt-2 grid gap-2 text-sm text-muted md:grid-cols-2">
+                    <div>Clasificare: <span className="text-ink">{candidate.classification}</span></div>
+                    <div>Provider: <span className="text-ink">{candidate.provider}</span></div>
+                    <div>ASN: <span className="text-ink">{candidate.asn}</span></div>
+                    <div>Locatie: <span className="text-ink">{candidate.location}</span></div>
+                  </div>
+                </div>
+                <ScoreBar score={candidate.score} />
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <EvidenceList title="Semnale pozitive" items={candidate.supportingSignals} tone="green" />
+                <EvidenceList title="Semnale negative" items={candidate.contradictionSignals} tone="red" />
+              </div>
+              <div className="mt-4 rounded bg-panel2 p-3 text-sm text-muted">{candidate.explanation}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -264,13 +345,14 @@ function Results({ job }: { job: ScanJob }) {
         )}
       </Section>
 
+      <CandidateEvidence result={result} />
+
       <Section title="HTTP TLS" icon={<Activity size={18} />}>
         <DataTable rows={result.http.map((http) => ({
           url: http.url,
           status: http.status ?? "n/a",
           tehnologii: http.technologies.join(", ") || "necunoscut",
           amprenta_eroare: http.errorSignature ?? "N/A",
-          favicon: http.faviconHash ?? "n/a",
           sensibil: http.sensitiveFiles?.join(", ") || "lipsa",
           vhost: http.vhostResponses ? Object.keys(http.vhostResponses).length + " testate" : "n/a",
           quic: http.quicSupported ? "Suportat" : "Nu"
@@ -304,98 +386,80 @@ function Results({ job }: { job: ScanJob }) {
 }
 
 function Documentation({ onBack }: { onBack: () => void }) {
+  const sources = [
+    ["crt.sh", "crt.sh", "Certificate Transparency logs, subdomenii si certificate timeline", "Public, gratuit"],
+    ["ip-api.com", "ip-api.com", "GeoIP, ASN, ISP si organizatie", "Public, gratuit, rate limited"],
+    ["RDAP", "rdap.org", "Alocare IP, proprietar retea, RIR data", "Public, gratuit"],
+    ["RIPE Stat", "stat.ripe.net", "BGP routing status, ASN neighbours, prefix info", "Public, gratuit"],
+    ["PeeringDB", "peeringdb.com", "Tip retea, IX presence, facility presence", "Public, gratuit"],
+    ["DNS public", "node:dns", "A, AAAA, MX, NS, TXT, SOA, CAA, PTR, DNSSEC", "System resolver"],
+    ["HTTP/TLS direct", "Direct connections", "Headers, certificat TLS, SAN, technologies, fisiere sensibile", "Direct probe"],
+    ["Nmap", "Local binary", "Porturi deschise si service detection", "Local tool"],
+    ["Traceroute", "Local binary", "Network path, hops, RTT", "Local tool"]
+  ];
+  const weights = [
+    ["DNS A record match", "+10", "IP-ul apare direct in A/AAAA pentru domeniu"],
+    ["DNS subdomain leak", "+15", "IP-ul apare in subdomenii care pot expune origin"],
+    ["TLS SAN confirmat", "+30", "Handshake TLS pe IP cu SNI domeniu returneaza certificat potrivit"],
+    ["HTTP content match", "+25", "Cererea catre IP cu Host header seamana cu raspunsul public"],
+    ["Hosting ASN consistent", "+15", "ASN/RDAP se potriveste cu detinatorul domeniului"],
+    ["PTR consistent", "+10", "Reverse DNS contine domeniul sau organizatia"],
+    ["BGP origin consistent", "+10", "Origin ASN este consistent cu profilul IP"],
+    ["CDN signature", "-30", "IP-ul apartine CDN/WAF sau edge proxy"],
+    ["MX-only IP", "-20", "IP-ul este asociat doar cu infrastructura email"],
+    ["HTTP unreachable", "-10", "IP-ul nu raspunde la HTTP cu Host header"],
+    ["Shared infrastructure", "-15", "Semnale de cloud/shared hosting fara confirmare origin"]
+  ];
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 animate-in fade-in">
+    <div className="mx-auto max-w-5xl px-4 py-8 animate-in fade-in">
       <button onClick={onBack} className="btn-ghost mb-6 flex items-center gap-2 text-muted hover:text-ink">
         <ArrowLeft size={18} />
-        Back to Dashboard
+        Inapoi la Dashboard
       </button>
 
-      <h1 className="text-3xl font-semibold text-cyanx mb-4 flex items-center gap-2">
+      <h1 className="mb-4 flex items-center gap-2 text-3xl font-semibold text-cyanx">
         <BookOpen size={28} />
-        Documentation & Parameters
+        Documentatie - Evidence Correlation Engine
       </h1>
-      <p className="text-muted mb-8 text-lg">
-        This page explains all the search parameters, operation modes, and advanced security checkboxes available in Domain ASM OSINT.
+      <p className="mb-8 text-lg text-muted">
+        Aceasta pagina descrie sursele de date interogate, cum sunt corelate rezultatele si cum este calculat scorul pentru candidatii origin.
       </p>
 
       <div className="space-y-8">
         <div className="card">
-          <h2 className="text-xl font-semibold mb-3 border-b border-line pb-2">Scan Modes (Modul de Scanare)</h2>
-          <ul className="space-y-3 text-sm text-ink/80">
-            <li><strong className="text-ink">passive</strong> - Doar colectare fără a atinge direct ținta (folosește surse OSINT precum Shodan, crt.sh).</li>
-            <li><strong className="text-ink">controlled-active</strong> - Modul recomandat. Interoghează activ ținta cu un nivel de intruziune mediu (DNS, IP-uri, probe HTTP și TLS).</li>
-            <li><strong className="text-ink">active-discovery</strong> - Foarte agresiv. Implică bruteforcing pe subdomenii, verificări de porturi pe o paletă largă și dirbusting profund.</li>
-            <li><strong className="text-ink">network-map</strong> - Se focusează strict pe topologia rețelei (Nmap, Traceroute, ASN-uri, BGP) ignorând partea web.</li>
-
-            <li><strong className="text-ink">dns-only</strong> - Focus doar pe arborele DNS, subdomenii și preluări de domenii (Takeovers).</li>
-          </ul>
+          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Surse de Date Interogare</h2>
+          <DataTable rows={sources.map(([serviciu, url, furnizeaza, acces]) => ({ serviciu, url, furnizeaza, acces }))} />
         </div>
 
         <div className="card">
-          <h2 className="text-xl font-semibold mb-3 border-b border-line pb-2">General Settings</h2>
-          <ul className="space-y-3 text-sm text-ink/80">
-            <li><strong className="text-ink">Max Depth</strong> - Limitează adâncimea recursivității atunci când se caută subdomenii ale subdomeniilor (Valoare default: 30).</li>
-          </ul>
+          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Cum sunt Corelate Datele</h2>
+          <div className="space-y-3 text-sm text-ink/80">
+            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">1. DNS si CT</strong> - Domeniul, subdomeniile si MX-urile sunt rezolvate la IP-uri candidate.</div>
+            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">2. IP enrichment</strong> - Fiecare IP primeste ASN, RDAP allocation, GeoIP, provider type si BGP origin.</div>
+            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">3. Direct probes</strong> - Pentru fiecare IP se face TLS SNI cu domeniul si HTTP GET cu Host header egal cu domeniul.</div>
+            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">4. Contradictii</strong> - CDN/WAF, MX-only, HTTP unreachable si shared infrastructure scad scorul.</div>
+            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">5. Verdict</strong> - Evidence Engine agrega semnalele si produce score, clasificare si explicatie pentru fiecare candidat.</div>
+          </div>
         </div>
 
         <div className="card">
-          <h2 className="text-xl font-semibold mb-3 border-b border-line pb-2">Active Controls (Module Avansate)</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <strong className="block text-ink">Nmap discrete</strong>
-              <span className="text-sm text-muted">Apelează utilitarul local Nmap pentru scanarea TCP a top 30 cele mai utilizate porturi. Folosește profil T2 pentru stealth.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">Traceroute</strong>
-              <span className="text-sm text-muted">Află path-ul pachetelor către țintă pentru a detecta gateway-uri și rețele intermediare ascunse.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">DNS bruteforce</strong>
-              <span className="text-sm text-muted">Folosește o listă predefinită pentru a ghici subdomenii ascunse (ex. dev, staging, admin).</span>
-            </div>
-            <div>
-              <strong className="block text-ink">HTTP fingerprint</strong>
-              <span className="text-sm text-muted">Obține headerele și informațiile de bază despre site-urile HTTP rulate pe porturile 80/443.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">TLS inspect</strong>
-              <span className="text-sm text-muted">Verifică certificatul SSL/TLS pentru a extrage domeniile alternative (SAN) și perioada de valabilitate.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">Banner grab</strong>
-              <span className="text-sm text-muted">Incearcă obținerea software-ului și versiunii care rulează pe un anumit port printr-o conexiune Raw TCP.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">Wappalyzer Web Tech</strong>
-              <span className="text-sm text-muted">Folosește un motor in-house cu expresii regulate pentru a identifica CMS-uri, librării JS, servere și WAF-uri din HTML/Headers.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">Dirbust (Sensitive Files)</strong>
-              <span className="text-sm text-muted">Execută request-uri silențioase (HEAD) către fișiere critice (ex: /.env, /robots.txt, /.git/config) care expun informații vitale.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">Favicon Hash</strong>
-              <span className="text-sm text-muted">Descarcă iconița site-ului, o convertește și creează un hash Murmur3 folosit frecvent pe Shodan pentru a urmări atacatori.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">HTTP/3 QUIC Probe</strong>
-              <span className="text-sm text-muted">Efectuează verificări pe pachete UDP port 443, identificând conexiunile QUIC capabile să evadeze firewall-urile tradiționale (TCP).</span>
-            </div>
-            <div>
-              <strong className="block text-ink">DNS Alterations</strong>
-              <span className="text-sm text-muted">Odată ce găsește un subdomeniu valid, generează variații logice (ex: adaugă prefixul dev-, test-) pentru a găsi instanțe neprotejate.</span>
-            </div>
-            <div>
-              <strong className="block text-ink">DNS AXFR (Zone Transfer)</strong>
-              <span className="text-sm text-muted">Vulnerabilitate critică. Cere nameserver-ului să ofere toată arhiva internă de domenii (o hartă completă a organizației).</span>
-            </div>
+          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Cum Functioneaza Scorul</h2>
+          <DataTable rows={weights.map(([semnal, pondere, descriere]) => ({ semnal, pondere, descriere }))} />
+          <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+            <div className="rounded border border-line bg-panel2 p-3"><strong className="text-greenx">70-100</strong><br />likely-origin</div>
+            <div className="rounded border border-line bg-panel2 p-3"><strong className="text-amberx">40-69</strong><br />possible-origin</div>
+            <div className="rounded border border-line bg-panel2 p-3"><strong className="text-redx">0-39</strong><br />unverified, cdn-proxy, shared-hosting sau email-only</div>
+          </div>
+        </div>
 
-            <div>
-              <strong className="block text-ink">JARM Fingerprint</strong>
-              <span className="text-sm text-muted">Simulează handshake-uri Raw TLS speciale cu suite de criptare pentru a genera un Hash criptografic unic serverului (foarte util vs. botnet-uri).</span>
-            </div>
-
+        <div className="card">
+          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Lantul de Alocare</h2>
+          <div className="space-y-3 text-sm text-ink/80">
+            <div><strong className="text-ink">RIR</strong> - identifica registrul regional si blocul IP.</div>
+            <div><strong className="text-ink">RDAP</strong> - identifica network name, allocation owner si parent network.</div>
+            <div><strong className="text-ink">BGP</strong> - identifica origin ASN, announced prefix si neighbours.</div>
+            <div><strong className="text-ink">Upstreams</strong> - arata relatii de tranzit si indicii de subinchiriere.</div>
+            <div><strong className="text-ink">Verdict</strong> - marcheaza in-house, direct provider, CDN/proxy, reseller sau likely subleased network.</div>
           </div>
         </div>
       </div>
@@ -465,7 +529,7 @@ function App() {
     ...defaultOptions,
     nmap: true, traceroute: true, dnsBruteforce: true, vhostProbe: true,
     httpFingerprint: true, tlsInspect: true, bannerGrab: true, infrastructureTrace: true,
-    wappalyzer: true, dirbust: true, faviconHash: true, quicProbe: true, dnsAlterations: true,
+    wappalyzer: true, dirbust: true, quicProbe: true, dnsAlterations: true,
     dnsAxfr: true, jarmFingerprint: true
   });
 
@@ -473,6 +537,7 @@ function App() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [history, setHistory] = React.useState<ScanJob[]>([]);
+  const [page, setPage] = React.useState<"dashboard" | "docs">("dashboard");
 
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [checkingAuth, setCheckingAuth] = React.useState(true);
@@ -555,6 +620,14 @@ function App() {
     return <Login onLogin={(p) => { localStorage.setItem("app_password", p); setIsAuthenticated(true); }} />;
   }
 
+  if (page === "docs") {
+    return (
+      <main className="min-h-screen text-ink">
+        <Documentation onBack={() => setPage("dashboard")} />
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen text-ink">
       <div className="mx-auto max-w-7xl px-4 py-6 overflow-hidden">
@@ -562,6 +635,10 @@ function App() {
           <div>
           </div>
           <div className="flex items-center gap-4">
+            <button className="btn-ghost flex items-center gap-2 text-muted hover:text-ink" onClick={() => setPage("docs")}>
+              <BookOpen size={16} />
+              Documentatie
+            </button>
             <button className="btn" onClick={start} disabled={loading || !target.trim()}>
               <Play size={16} />
               {loading ? "Se porneste..." : "Porneste Scanarea"}

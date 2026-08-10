@@ -26,7 +26,6 @@ export const serverConfig = {
     infrastructureTrace: boolEnv("ENABLE_INFRASTRUCTURE_TRACE", true),
     wappalyzer: true,
     dirbust: false, // passive-only by default to avoid noise
-    faviconHash: true,
     quicProbe: false,
     dnsAlterations: false, // can be slow
     dnsAxfr: true,

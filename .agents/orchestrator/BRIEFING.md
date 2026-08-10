@@ -1,77 +1,72 @@
-# BRIEFING — 2026-08-09T03:57:23Z
+# BRIEFING — 2026-08-10T17:13:44Z
 
 ## Mission
-Orchestrate Milestone M4 (Final Integration & E2E Verification) for domain_check, perform M4 Gate verification, and report victory to parent.
+Re-architect the Origin / Hosting / Ownership Correlation Engine for domain_check with evidence-based scoring (0-100), explicit ownership concepts, expanded correlation sources, a multi-stage pipeline, frontend UI breakdown/explanations, and a documentation page.
 
 ## 🔒 My Identity
-- Archetype: self
+- Archetype: teamwork_preview
 - Roles: orchestrator, user_liaison, human_reporter, successor
 - Working directory: /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator
-- Original parent: parent
-- Original parent conversation ID: b157056c-b44b-4103-aca0-3236b33bceed
+- Original parent: top-level
+- Original parent conversation ID: none
 
 ## 🔒 My Workflow
-- **Pattern**: Project
+- **Pattern**: Project Pattern
 - **Scope document**: /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/PROJECT.md
-1. **Decompose**: Survey completed (Step 0), PROJECT.md created (Step 1). Milestones: M1 (Email Hunter - DONE), M2 (Subleased Infra - DONE), M3 (UI Force - DONE), M4 (Dual Track E2E - DONE).
-2. **Dispatch & Execute**: Explorer -> Worker -> Reviewer -> Challenger -> Auditor loop per milestone.
-3. **On failure**: Retry -> Replace -> Skip -> Redistribute -> Redesign -> Escalate
-4. **Succession**: Self-succeed at spawn_count >= 20.
+1. **Decompose**: Survey existing codebase and specifications via 3 Explorers/Spec Miners, merge feature inventory, decompose into milestones (backend engine & models, correlation sources & pipeline, frontend UI & docs, E2E test suite).
+2. **Dispatch & Execute**: Direct/Delegate sub-orchestrators for milestones and iteration loops (Explorer -> Worker -> Reviewer -> Challenger -> Forensic Auditor gate).
+3. **On failure**: Retry -> Replace -> Skip -> Redistribute -> Redesign.
+4. **Succession**: Spawn successor when spawn count >= 20 and subagents complete.
 - **Work items**:
-  1. Survey & Architecture [done]
-  2. M1 Enhanced Email Hunter [done]
-  3. M2 Subleased Infrastructure Fix [done]
-  4. M3 Active Discovery UI Force [done]
-  5. M4 Final Integration & E2E Testing [done]
-- **Current phase**: 7 (Victory Reporting)
-- **Current focus**: Report Victory to Parent b157056c-b44b-4103-aca0-3236b33bceed
+  1. Survey & Initial Investigation [in-progress]
+  2. Architecture & Decomposition [pending]
+  3. E2E Test Suite Creation [pending]
+  4. Core Engine & Evidence Model Refactoring [pending]
+  5. Expanded Sources & Multi-Stage Pipeline [pending]
+  6. Frontend UI & Documentation Page [pending]
+  7. Final E2E Test & Adversarial Hardening [pending]
+- **Current phase**: 1 (Survey)
+- **Current focus**: Survey codebase and extract requirements via Explorers & Spec Miner
 
 ## 🔒 Key Constraints
-- NEVER write source code directly.
-- NEVER run build/test commands directly.
-- DISPATCH-ONLY. Use subagents for all investigation, implementation, review, testing, auditing.
-- ALWAYS include path to ORIGINAL_REQUEST.md in subagent dispatches.
-- teamwork_preview_auditor is MANDATORY binary veto.
+- NEVER write, modify, or create source code files directly.
+- NEVER run build/test commands yourself.
+- All file edits by orchestrator MUST be inside .agents/ directory (.md metadata files).
+- Pass ORIGINAL_REQUEST.md path to all subagents.
+- Mandatory integrity checks: Forensic Auditor veto is absolute binary veto.
 
 ## Current Parent
-- Conversation ID: b157056c-b44b-4103-aca0-3236b33bceed
-- Updated: 2026-08-09T03:57:23Z
+- Conversation ID: top-level
+- Updated: not yet
 
 ## Key Decisions Made
-- Selected Project Pattern with 3 implementation milestones + 1 E2E testing milestone.
-- Milestone M1 PASSED all gate criteria.
-- Milestone M2 PASSED all gate criteria.
-- Milestone M3 PASSED all gate criteria.
-- Milestone M4 PASSED all gate criteria (2 Reviewers APPROVE, 2 Challengers APPROVE, Auditor CLEAN).
+- Initialized Project Orchestrator state.
+- Scheduled heartbeat cron (task-6).
+- Initiated 3 parallel survey subagents (2 Explorers, 1 Spec Miner) to investigate existing codebase structure, current correlation engine, frontend framework, and test infrastructure.
 
 ## Team Roster
 | Agent | Type | Work Item | Status | Conv ID |
 |-------|------|-----------|--------|---------|
-| worker_m4 | teamwork_preview_worker | Milestone M4 Integration & E2E Verification | completed | f7de2f43-72b1-4185-9f3e-46f8cdfac54a |
-| reviewer_m4_1 | teamwork_preview_reviewer | M4 Gate Review 1 | completed (APPROVE) | 81df7242-1a1f-4afa-9c43-607f6b419b46 |
-| reviewer_m4_2 | teamwork_preview_reviewer | M4 Gate Review 2 | completed (APPROVE) | eb451268-e455-4077-a35c-8694800e5c7e |
-| challenger_m4_1 | teamwork_preview_challenger | M4 Gate Challenge 1 | completed (APPROVE) | ffcdf4bd-ecee-40d0-bdef-258ec80c4698 |
-| challenger_m4_2 | teamwork_preview_challenger | M4 Gate Challenge 2 | completed (APPROVE) | c59a72da-94c4-482b-9f6d-1e8e3b27d3ea |
-| auditor_m4_1 | teamwork_preview_auditor | M4 Gate Forensic Audit | completed (CLEAN) | 0b532a5e-f852-4e94-9ca7-3764cd6630c6 |
+| explorer_1 | teamwork_preview_explorer | Survey backend architecture, data models, correlation logic | completed | e215c27f-8002-41ff-b326-8c7a75fb584c |
+| explorer_2 | teamwork_preview_explorer | Survey frontend architecture, UI components, pages, router | completed | 0cf7e4fb-e3c9-47a3-a1e5-2f10afbda36c |
+| spec_miner_1 | teamwork_preview_spec_miner | Mine requirements and specifications from ORIGINAL_REQUEST.md | completed | 95c407ca-d13c-4b94-9fcd-d14d0e6f4901 |
+| e2e_testing_orch | self | E2E Testing Suite Track Orchestration (M0: Tiers 1-4, TEST_READY.md) | in-progress | d5a5c4d2-0e35-4d6b-a3f2-fd3938410b1b |
+| m1_orch | self | Milestone 1 Sub-orchestrator: Core Types, 0-100 Scoring & 7 Ownership Concepts | in-progress | ff183762-c32f-4d20-831e-468e44882b94 |
 
 ## Succession Status
 - Succession required: no
-- Spawn count: 6 / 20
-- Pending subagents: none
-- Predecessor: Gen 1 (conv ID ad7dd0f5-90ed-4048-9e8f-f36d09443382)
-- Successor: none
-
-
-
-- Predecessor: Gen 1 (conv ID ad7dd0f5-90ed-4048-9e8f-f36d09443382)
+- Spawn count: 5 / 20
+- Pending subagents: d5a5c4d2-0e35-4d6b-a3f2-fd3938410b1b, ff183762-c32f-4d20-831e-468e44882b94
+- Predecessor: none
 - Successor: not yet spawned
 
 ## Active Timers
-- Heartbeat cron: starting
+- Heartbeat cron: task-6
 - Safety timer: none
 
 ## Artifact Index
-- /Users/davidalexandru/Downloads/domain_check/.agents/ORIGINAL_REQUEST.md — Verbatim user request log
-- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/DISPATCH.md — Orchestrator dispatch assignment
-- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/PROJECT.md — Global architecture & milestones
-- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/handoff.md — Soft handoff from Gen 1
+- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/BRIEFING.md — persistent briefing state
+- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/progress.md — progress tracking and liveness
+- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/plan.md — high-level execution plan
+- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/PROJECT.md — project architecture and milestones
+- /Users/davidalexandru/Downloads/domain_check/.agents/orchestrator/DISPATCH.md — task assignment log

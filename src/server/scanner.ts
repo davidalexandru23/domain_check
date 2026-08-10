@@ -1,16 +1,18 @@
 import dns from "node:dns/promises";
-import type { ActiveOptions, RiskFinding, ScanProgress, ScanRequest, ScanResult, OriginCandidate } from "../shared/types.js";
+import type { ActiveOptions, RiskFinding, ScanProgress, ScanRequest, ScanResult, OriginCandidate, OriginCandidateDetailed, MxInfrastructureSummary, NarrativeVerdict } from "../shared/types.js";
 import { serverConfig } from "./config.js";
 import { getDnsDeepScan, discoverSubdomains, probeDkimSelectors } from "./modules/dns.js";
 import { getDomainProfile } from "./modules/domain.js";
 
 
 import { collectHttp, inspectTls } from "./modules/http.js";
-import { getIpProfile } from "./modules/ip.js";
 import { collectCtSubdomains } from "./modules/passive.js";
+import { getIpProfile } from "./modules/ip.js";
+import { collectAllEvidence } from "./modules/evidenceEngine.js";
 import { grabBanners, runDiscreteNmap, runTraceroute } from "./modules/active.js";
 import { buildInfrastructureSupplyChain } from "./modules/infrastructure.js";
-import { delayByPolicy, limitList, normalizeTarget, unique } from "./utils.js";
+import { computeDecoupledOwnership } from "./engine/ownership.js";
+import { classifyProvider, delayByPolicy, limitList, normalizeTarget, unique } from "./utils.js";
 
 export type ProgressSink = (progress: Omit<ScanProgress, "scanId" | "at">) => void;
 
@@ -25,7 +27,6 @@ export const mergeOptions = (options?: Partial<ActiveOptions>): ActiveOptions =>
     merged.infrastructureTrace = false;
     merged.wappalyzer = false;
     merged.dirbust = false;
-    merged.faviconHash = false;
     merged.quicProbe = false;
     merged.dnsAlterations = false;
     merged.dnsAxfr = false;
@@ -33,7 +34,7 @@ export const mergeOptions = (options?: Partial<ActiveOptions>): ActiveOptions =>
   }
   merged.maxHosts = Math.min(Math.max(1, merged.maxHosts), 100);
   merged.maxPorts = Math.min(Math.max(1, merged.maxPorts), 100);
-  merged.maxDepth = Math.min(Math.max(0, merged.maxDepth), 10000);
+  merged.maxDepth = Math.min(Math.max(0, merged.maxDepth), 30);
   merged.concurrency = Math.min(Math.max(1, merged.concurrency), 8);
   merged.rateLimit = Math.max(0, merged.rateLimit);
   merged.timeoutMs = Math.min(Math.max(3000, merged.timeoutMs), 60000);
@@ -103,7 +104,6 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
       options.infrastructureTrace = true;
       options.wappalyzer = true;
       options.dirbust = true;
-      options.faviconHash = true;
       options.quicProbe = true;
       options.dnsAlterations = true;
       options.dnsAxfr = true;
@@ -130,7 +130,7 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     import("./modules/dns.js")
   ]);
 
-  if (dkimSelectors.length) dnsResult.txt.push(...dkimSelectors.map((selector) => `dkim selector observed: ${selector}`));
+  if (dkimSelectors.length) dnsResult.txt.push(...dkimSelectors.map((selector: string) => `dkim selector observed: ${selector}`));
   
   if (options.dnsAxfr) {
     dnsResult.zoneTransfer = await probeAxfr(domain, dnsResult.ns, options.dnsAxfr, options.timeoutMs);
@@ -145,7 +145,7 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
 
 
   emit({ status: "running", stage: "ip", message: "Profiling IP addresses and ASN owners", percent: 38 });
-  const mxDomains = unique(dnsResult.mx.map(mx => mx.exchange.toLowerCase().replace(/^\./, '')));
+  const mxDomains = unique(dnsResult.mx.map((mx: { exchange: string; priority: number }) => mx.exchange.toLowerCase().replace(/^\./, '')));
   const allHosts = unique([domain, ...subdomains, ...mxDomains]).slice(0, options.maxHosts);
   const resolvedIps: string[] = [...ipListFromDns(dnsResult)];
   for (const host of allHosts) {
@@ -198,69 +198,49 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
   const origins: OriginCandidate[] = [];
   const cdnKeywords = ["cloudflare", "akamai", "fastly", "incapsula", "sucuri", "imperva", "ddos-guard"];
   
-  // Find all unique IPs from subdomains and MX records that we collected
   const candidateIps = new Set<string>();
-  if (dnsResult.a) dnsResult.a.forEach(ip => candidateIps.add(ip));
+  const candidateSources = new Map<string, Set<string>>();
+  const mxIps = new Set<string>();
+  const addCandidate = (ip: string, source: string) => {
+    candidateIps.add(ip);
+    const set = candidateSources.get(ip) ?? new Set<string>();
+    set.add(source);
+    candidateSources.set(ip, set);
+  };
+  if (dnsResult.a) dnsResult.a.forEach((ip: string) => candidateIps.add(ip));
+  if (dnsResult.a) dnsResult.a.forEach((ip: string) => addCandidate(ip, domain));
   
   await Promise.all([
-    ...subdomains.slice(0, 50).map(async (sub) => {
+    ...subdomains.slice(0, 50).map(async (sub: string) => {
       try {
-        const res = await dns.resolve4(`${sub}.${domain}`);
-        res.forEach(ip => candidateIps.add(ip));
+        const host = sub.endsWith(domain) ? sub : `${sub}.${domain}`;
+        const res = await dns.resolve4(host);
+        res.forEach((ip: string) => addCandidate(ip, host));
       } catch { }
     }),
-    ...(dnsResult.mx ? dnsResult.mx.map(async (mx) => {
+    ...(dnsResult.mx ? dnsResult.mx.map(async (mx: { exchange: string; priority: number }) => {
       try {
         const res = await dns.resolve4(mx.exchange);
-        res.forEach(ip => candidateIps.add(ip));
+        res.forEach((ip: string) => {
+          mxIps.add(ip);
+          addCandidate(ip, mx.exchange);
+        });
       } catch { }
     }) : [])
   ]);
 
-  // Filter IPs that don't belong to CDNs
   for (const ip of candidateIps) {
       try {
-          const profile = await getIpProfile(ip, options.timeoutMs);
+          const profile = ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs);
           const orgName = (profile.asn.org ?? profile.networkName ?? "").toLowerCase();
           const isCdn = cdnKeywords.some(kw => orgName.includes(kw));
           
           if (!isCdn && orgName) {
-              let confidence: "high" | "medium" | "low" = orgName.includes("hosting") || orgName.includes("cloud") ? "high" : "medium";
-              let sourceMsg = "DNS/Subdomain Leak";
-
-              // Try to connect to 443 on this IP and check the certificate
-              if (activeAllowed(request.mode)) {
-                  try {
-                      const tls = await import("node:tls");
-                          const certMatch = await new Promise<boolean>((resolve) => {
-                          const socket = tls.connect({
-                              host: ip,
-                              port: 443,
-                              servername: domain,
-                              rejectUnauthorized: false,
-                              timeout: 3000
-                          }, () => {
-                              const cert = socket.getPeerCertificate();
-                              socket.destroy();
-                              resolve(!!(cert.subject?.CN?.includes(domain) || cert.subjectaltname?.includes(domain)));
-                          });
-                          socket.on("error", () => resolve(false));
-                          socket.on("timeout", () => { socket.destroy(); resolve(false); });
-                      });
-                      if (certMatch) {
-                          confidence = "high";
-                          sourceMsg = "DNS Leak + TLS Certificat Confirmat (100%)";
-                      }
-                  } catch {
-                      // ignore
-                  }
-              }
-
               origins.push({
                   ip,
-                  source: sourceMsg,
+                  source: Array.from(candidateSources.get(ip) ?? ["DNS leak"]).join(", "),
                   provider: profile.asn.org ?? profile.networkName ?? "Unknown",
-                  confidence
+                  confidence: classifyProvider(profile.asn.org) === "cloud" ? "medium" : "high"
               });
           }
       } catch {
@@ -270,6 +250,64 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
 
   emit({ status: "running", stage: "asm", message: "Building ASM graph and risk findings", percent: 90 });
   
+  const candidates: OriginCandidateDetailed[] = [];
+  for (const ip of candidateIps) {
+    const ipProfile = ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs);
+    const candidate = await collectAllEvidence({
+      domain,
+      ip,
+      ipProfile,
+      dnsResult,
+      httpResults: http,
+      tlsResults: tls,
+      ports,
+      mxIps: Array.from(mxIps),
+      subdomainHosts: Array.from(candidateSources.get(ip) ?? []),
+      registrantOrg: profile.registrantOrg,
+      timeoutMs: options.timeoutMs
+    });
+    candidates.push(candidate);
+  }
+
+  // Determine top candidate by score
+  let topOriginCandidate: OriginCandidateDetailed | undefined = undefined;
+  if (candidates.length) {
+    topOriginCandidate = candidates.reduce((best, cur) => (cur.score > best.score ? cur : best), candidates[0]);
+  }
+
+  const mxProfiles = [];
+  for (const ip of mxIps) {
+    try {
+      mxProfiles.push(ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs));
+    } catch {
+      // a continua fara profil MX
+    }
+  }
+  const mxInfrastructure: MxInfrastructureSummary = {
+    domain,
+    mxRecords: dnsResult.mx.map((m: { exchange: string; priority: number }) => m.exchange),
+    ips: Array.from(mxIps),
+    providers: unique(mxProfiles.map((profile) => profile.asn.org ?? profile.rirAllocationOwner ?? profile.networkName).filter((provider): provider is string => Boolean(provider))),
+    isolatedFromWebOrigin: Array.from(mxIps).every((ip) => !dnsResult.a.includes(ip) && !origins.some((origin) => origin.ip === ip))
+  };
+
+  const topIpProfile = topOriginCandidate ? ips.find((ip) => ip.ip === topOriginCandidate.ip) : undefined;
+  const decoupledOwnership = computeDecoupledOwnership({
+    domain: profile,
+    topCandidate: topOriginCandidate,
+    candidates,
+    ipProfile: topIpProfile,
+    infrastructure: supplyChain.infrastructure
+  });
+
+  const narrativeVerdict: NarrativeVerdict = {
+    summary: topOriginCandidate ? `Top origin candidate ${topOriginCandidate.ip} scored ${topOriginCandidate.score}/100` : "No origin candidate identified",
+    classification: topOriginCandidate?.classification ?? "unknown",
+    confidenceScore: topOriginCandidate?.score ?? 0,
+    explanation: topOriginCandidate?.explanation ?? "No evidence-backed origin candidate could be selected from the observed DNS, HTTP, TLS and network data.",
+    keyEvidence: topOriginCandidate ? topOriginCandidate.supportingSignals.map(s => s.title) : []
+  };
+
   const partial = {
     domain: profile,
     ownership: [...ownership, ...ct.timeline],
@@ -283,13 +321,18 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     subdomains,
     infrastructure: supplyChain.infrastructure,
     origins,
+    candidates,
+    topOriginCandidate,
+    decoupledOwnership,
+    ownershipModel: decoupledOwnership,
+    mxInfrastructure,
+    narrativeVerdict,
     warnings: [
       ...supplyChain.infrastructure.warnings,
       ...(ct.source?.note ? [`CT source warning: ${ct.source.note}`] : []),
       "Ownership history is limited to public free sources and may be incomplete."
     ]
   };
-
   emit({ status: "done", stage: "done", message: "Scan complete", percent: 100 });
-  return { ...partial, risks: [] };
+  return { ...partial, risks: [] } as unknown as ScanResult;
 };

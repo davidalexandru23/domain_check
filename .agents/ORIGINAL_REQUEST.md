@@ -1,35 +1,44 @@
 # Original User Request
 
-## Initial Request — 2026-08-09T03:27:28+03:00
+## 2026-08-10T14:13:32Z
 
+<USER_REQUEST>
 # Teamwork Project Prompt — Draft
 
 > Status: Launched
 > Goal: Execution delegated to teamwork_preview
 
-Re-architect the email dorking and hunting mechanisms to display rich contextual information and sources. Additionally, fix the subleased infrastructure logic regression to correctly identify infra owners, and update the frontend UI so 'active-discovery' mode visually forces all toggles to be checked.
+Re-architect the Origin / Hosting / Ownership Correlation Engine to use a sophisticated evidence-based scoring model (0-100), explicitly distinguishing between domain ownership, IP allocation, ASN operation, hosting provider, and physical location.
 
 Working directory: /Users/davidalexandru/Downloads/domain_check
 Integrity mode: development
 
 ## Requirements
 
-### R1. Enhanced Email Hunter
-Improve the email dorking logic (`search.ts` / `email.ts`) and frontend to capture and display more detailed source information and contextual snippets for each discovered email.
+### R1. Implement Evidence & Contradiction Engine
+For each IP candidate, build an evidence structure capturing supporting signals (e.g. +30 TLS SAN match, +25 HTTP content match) and contradictions (e.g. -30 CDN signature). The final classification must not be a simple guess, but an explainable ranking of candidates with a detailed breakdown of evidence.
 
-### R2. Subleased Infrastructure Fix
-Debug and fix the regression in the infrastructure trace logic (`infrastructure.ts`) so that it correctly infers and displays who is most likely to own the actual infrastructure where the target is hosted.
+### R2. Separate Ownership Concepts & Confidences
+Differentiate explicitly between: Domain ownership, IP ownership, ASN ownership, Network operation, Hosting provider, Application origin, and Physical infrastructure location. Confidence must be calculated separately for each (e.g., domainOwner confidence vs. originIp confidence).
 
-### R3. Active Discovery UI Force
-Update the frontend React components (`main.tsx`) so that selecting "active-discovery" mode automatically checks and visually locks all advanced scanning toggles.
+### R3. Expand Correlation Sources
+Correlate data across: expanded DNS records (A, AAAA, CNAME, MX, TXT, etc.), controlled subdomain discovery, TLS certificates (SAN, Issuer), HTTP/Host-header fingerprinting, BGP/RIPE discrepancies (subleased/reseller detection), and Reverse DNS (PTR). MX infrastructure must be categorized separately from web origins.
 
-## Verification Resources
-You can use the existing `scratch/test-hunter.ts` and `scratch/debug-search.ts` scripts in the workspace to test the email dorking module in isolation before running the full server.
+### R4. Multi-Stage Performance Pipeline
+Implement a staged pipeline to prevent scanning the entire internet: Passive discovery → Candidate generation → Cheap enrichment → Candidate scoring → Expensive verification (only for top candidates) → Final ranking.
+
+### R5. Deliverables & UI Updates
+Provide a detailed architectural refactoring. The final output (including the frontend UI) must display the full context: Provider, ASN, Estimated Location, Classification (e.g. likely-origin, cdn, shared-hosting), detailed Supporting Evidence, Contradictions, and a human-readable explanation of the conclusion.
+
+### R6. Documentation Page
+Implement a secondary documentation page in the frontend that explicitly explains every search and scanning method, how the data points are cross-referenced, and how the evidence scoring system works.
 
 ## Acceptance Criteria
 
-### Verification
-- [ ] Running a scan against `edu.gov.ro` via the UI displays specific source context/snippets for emails rather than generic output.
-- [ ] The subleased infrastructure section for `edu.gov.ro` successfully identifies an organizational owner (e.g., ICI or similar) rather than failing or showing 'unknown'.
-- [ ] In the UI, selecting "active-discovery" immediately checks all active control toggles.
-- [ ] No regression in the server build process (`npm run server:build`).
+### Verification & Testing
+- [ ] Code successfully distinguishes between domain ownership, hosting, and origin IP without conflating them into a single "owner" field.
+- [ ] The engine correctly handles and explains a direct-hosted domain (high confidence origin).
+- [ ] The engine correctly handles and explains a Cloudflare-proxied domain (detects CDN, doesn't claim CDN IP is the physical server).
+- [ ] The engine correctly handles a domain with separate MX provider infrastructure.
+- [ ] The UI successfully renders the new detailed evidence breakdown and score (0-100) instead of the old high/medium/low system.
+</USER_REQUEST>

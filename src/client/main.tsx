@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Activity, Building2, Globe2, Mail, MapPin, Network, Play, Radar, Shield, TerminalSquare, BookOpen, Clock, ArrowLeft } from "lucide-react";
+import { Activity, Building2, Globe2, Mail, MapPin, Network, Play, Radar, Shield, TerminalSquare, BookOpen, Clock, ArrowLeft, AlertCircle } from "lucide-react";
 import type { ActiveOptions, ScanJob, ScanMode, ScanResult } from "../shared/types";
 import "./styles.css";
 
@@ -148,7 +148,7 @@ function DataTable({ rows }: { rows: Array<Record<string, React.ReactNode>> }) {
         <tbody className="divide-y divide-line">
           {rows.map((row, index) => (
             <tr key={index} className="bg-panel/70">
-              {columns.map((column) => <td key={column} className="px-3 py-2 align-top text-ink break-words whitespace-normal"><div className="max-h-[160px] overflow-y-auto pr-1">{row[column]}</div></td>)}
+              {columns.map((column) => <td key={column} className="px-3 py-2 align-top text-ink break-words whitespace-normal"><div className="max-h-[160px] overflow-y-auto pr-1 whitespace-pre-wrap font-mono text-xs">{row[column]}</div></td>)}
             </tr>
           ))}
         </tbody>
@@ -169,20 +169,42 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
-function EvidenceList({ title, items, tone }: { title: string; items: ScanResult["candidates"][number]["supportingSignals"]; tone: "green" | "red" }) {
+function ConfidenceGrid({ confidences, familyScores }: { confidences: any; familyScores: any }) {
+  return (
+    <div className="mt-4">
+      <div className="text-xs uppercase tracking-wide text-muted mb-2">Detailed Confidences & Families</div>
+      <div className="grid gap-2 grid-cols-2 md:grid-cols-4">
+        {Object.entries(confidences).map(([key, value]) => (
+          <div key={key} className="rounded border border-line bg-panel2 p-2">
+            <div className="text-xs text-muted capitalize">{key}</div>
+            <div className="font-semibold text-ink">{String(value)}/100</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 text-xs text-muted">
+        <span className="font-medium text-ink">Family Breakdown:</span>{" "}
+        {Object.entries(familyScores || {})
+          .map(([family, score]) => `${family}: ${score}`)
+          .join(" | ")}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceList({ title, items, tone, emptyText }: { title: string; items: ScanResult["candidates"][number]["supportingSignals"]; tone: "green" | "red"; emptyText?: string }) {
   const color = tone === "green" ? "text-greenx" : "text-redx";
   return (
     <div>
       <div className="mb-2 text-xs uppercase tracking-wide text-muted">{title}</div>
       {items.length === 0 ? (
-        <div className="text-sm text-muted">niciun semnal</div>
+        <div className="text-sm text-muted/70 italic">{emptyText || "Nu au fost identificate semnale în această categorie."}</div>
       ) : (
         <div className="space-y-2">
           {items.map((item) => (
             <div key={`${item.id}-${item.observedData ?? ""}`} className="rounded border border-line bg-panel2 p-2 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-medium">{item.title}</span>
-                <span className={color}>{item.weight > 0 ? `+${item.weight}` : item.weight}</span>
+                <span className={color}>{item.strength}</span>
               </div>
               <div className="mt-1 text-muted">{item.description}</div>
               {item.observedData && <div className="mt-1 break-all text-xs text-muted">{item.observedData}</div>}
@@ -195,7 +217,7 @@ function EvidenceList({ title, items, tone }: { title: string; items: ScanResult
 }
 
 function CandidateEvidence({ result }: { result: ScanResult }) {
-  const candidates = [...(result.candidates ?? [])].sort((a, b) => b.score - a.score);
+  const candidates = [...(result.candidates ?? [])].sort((a, b) => b.confidences.origin - a.confidences.origin);
   return (
     <Section title="Candidati Origin si Evidence Score" icon={<Radar size={18} />}>
       {result.narrativeVerdict && (
@@ -224,8 +246,9 @@ function CandidateEvidence({ result }: { result: ScanResult }) {
                     <div>Locatie: <span className="text-ink">{candidate.location}</span></div>
                   </div>
                 </div>
-                <ScoreBar score={candidate.score} />
+                <ScoreBar score={candidate.confidences.origin} />
               </div>
+              <ConfidenceGrid confidences={candidate.confidences} familyScores={{}} />
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <EvidenceList title="Semnale pozitive" items={candidate.supportingSignals} tone="green" />
                 <EvidenceList title="Semnale negative" items={candidate.contradictionSignals} tone="red" />
@@ -240,147 +263,411 @@ function CandidateEvidence({ result }: { result: ScanResult }) {
 }
 
 
+
+function renderStatus(status?: string) {
+  if (!status) return null;
+  const color = status === "Confirmed" || status === "CONFIRMED" ? "text-greenx border-greenx" : status.includes("Inferred") || status.includes("INFERRED") ? "text-amberx border-amberx" : "text-muted border-line";
+  return <span className={`text-xs font-semibold px-2 py-1 rounded border ${color}`}>{status.toUpperCase()}</span>;
+}
+
+
+function ScanSummary({ result }: { result: ScanJob["result"] }) {
+  if (!result) return null;
+  const webOrigin = result.topOriginCandidate;
+  const mxCount = result.mxInfrastructure?.candidates?.length || 0;
+  
+  return (
+    <div className="card border-l-4 border-cyanx mb-8">
+      <h3 className="font-bold mb-4 uppercase text-sm tracking-wide text-cyanx">Rezultat Scanare</h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div>
+          <div className="text-muted">ORIGINE WEB</div>
+          <div className="font-medium">{webOrigin?.inconclusive ? `MULTIPLE CANDIDATES (${result.candidates?.filter(c => c.inconclusive).length})` : (webOrigin?.ip ?? "UNKNOWN")}</div>
+          {webOrigin?.inconclusive && (
+            <div className="text-xs text-muted mt-1">
+              {result.candidates?.filter(c => c.inconclusive).map(c => `#1 ${c.ip}`).join("\n")}
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="text-muted">CLASIFICARE</div>
+          <div className="font-medium text-ink uppercase">{webOrigin?.inconclusive ? "INCONCLUSIVE" : (webOrigin?.classification ?? "unknown")}</div>
+        </div>
+        <div>
+          <div className="text-muted">ÎNCREDERE</div>
+          <div className="font-medium text-cyanx uppercase">{webOrigin?.inconclusive ? `${webOrigin?.confidenceRating} (TIED)` : (webOrigin?.confidenceRating ?? "UNKNOWN")}</div>
+        </div>
+        <div>
+          <div className="text-muted">INFRASTRUCTURĂ EMAIL</div>
+          <div className="font-medium">{mxCount > 0 ? `${mxCount} MX-uri identificate` : "Niciun MX identificat"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttributionSummary({ result }: { result: ScanJob["result"] }) {
+  if (!result) return null;
+  const dec = result.decoupledOwnership;
+  return (
+    <Section title="1. SUMAR ATRIBUIRE" icon={<Shield size={18} />}>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="card border-l-4 border-cyanx">
+          <h3 className="font-bold mb-4 uppercase text-sm tracking-wide text-cyanx">Atribuire Web</h3>
+          <table className="w-full text-sm">
+            <tbody>
+              <tr><td className="py-1 text-muted">Likely Origin</td><td className="font-medium">{result.topOriginCandidate?.ip ?? "UNKNOWN"}</td></tr>
+              <tr><td className="py-1 text-muted">Origin Confidence</td><td className="font-medium">{result.topOriginCandidate?.confidences.origin ?? 0}/100</td></tr>
+              <tr><td className="py-1 text-muted">RIR Allocation</td><td className="font-medium">{dec?.rirAllocation?.identity ?? "UNKNOWN"}</td></tr>
+              <tr><td className="py-1 text-muted">BGP Origin</td><td className="font-medium">{dec?.asnOperation?.identity ?? "UNKNOWN"}</td></tr>
+              <tr><td className="py-1 text-muted">Operator rețea</td><td className="font-medium">{dec?.networkOperation?.identity === "UNKNOWN" ? <span className="text-muted">UNKNOWN (Evidence insuficientă)</span> : <>{dec?.networkOperation?.identity}<br/><div className="mt-1">{renderStatus(dec?.networkOperation?.confidence && dec.networkOperation.confidence > 80 ? "CONFIRMED" : "INFERRED")}</div></>}</td></tr>
+              <tr><td className="py-1 text-muted">Furnizor hosting</td><td className="font-medium">{dec?.hostingProvider?.identity === "UNKNOWN" ? <span className="text-muted">UNKNOWN (Evidence insuficientă)</span> : <>{dec?.hostingProvider?.identity}<br/><div className="mt-1">{renderStatus(dec?.hostingProvider?.confidence && dec.hostingProvider.confidence > 80 ? "CONFIRMED" : "INFERRED")}</div></>}</td></tr>
+              <tr><td className="py-1 text-muted">Application Operator</td><td className="font-medium">{dec?.applicationOperator?.identity ?? "UNKNOWN"}</td></tr>
+              <tr><td className="py-1 text-muted">Probable Customer</td><td className="font-medium">{dec?.probableCustomer?.identity ?? "UNKNOWN"}</td></tr>
+              <tr><td className="py-1 text-muted">Locație estimată</td><td className="font-medium">{dec?.estimatedLocation?.identity ?? "UNKNOWN"}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="font-bold uppercase text-sm tracking-wide text-cyanx ml-2">Atribuire Email</h3>
+          {result.mxInfrastructure?.candidates?.map((c, i) => (
+            <div key={i} className="card border-l-4 border-purple-500">
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr><td className="py-1 text-muted">MX Host</td><td className="font-medium">{c.hostname}</td></tr>
+                  <tr><td className="py-1 text-muted">Mail IP</td><td className="font-medium">{c.ip}</td></tr>
+                  <tr><td className="py-1 text-muted">RIR Allocation</td><td className="font-medium">{c.ownershipChain?.rirAllocation?.identity}</td></tr>
+                  <tr><td className="py-1 text-muted">BGP Origin</td><td className="font-medium">{c.ownershipChain?.asnOperation?.identity}</td></tr>
+                  <tr><td className="py-1 text-muted">Operator rețea</td><td className="font-medium">{c.ownershipChain?.networkOperation?.identity}</td></tr>
+                  <tr><td className="py-1 text-muted">Furnizor e-mail</td><td className="font-medium">{c.ownershipChain?.emailProvider?.identity === "UNKNOWN" ? <span className="text-muted">UNKNOWN (Evidence insuficientă)</span> : <>{c.ownershipChain?.emailProvider?.identity}<br/><div className="mt-1">{renderStatus(c.ownershipChain?.emailProvider?.status)}</div></>}</td></tr>
+                  <tr><td className="py-1 text-muted">Locație estimată</td><td className="font-medium">{c.ownershipChain?.estimatedLocation?.identity}</td></tr>
+                  <tr><td className="py-1 text-muted">Confidence</td><td className="font-medium">{c.ownershipChain?.emailProvider?.confidence}/100</td></tr>
+                </tbody>
+              </table>
+            </div>
+          ))}
+          {!result.mxInfrastructure?.candidates?.length && <div className="text-muted text-sm ml-2">No MX infrastructure candidates found.</div>}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function InfraNode({ label, val }: { label: string; val: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-40 text-right text-xs uppercase text-muted font-semibold">{label}</div>
+      <div className="w-3 h-3 rounded-full bg-cyanx shadow-[0_0_8px_rgba(0,255,255,0.5)]"></div>
+      <div className="flex-1 p-2 rounded bg-panel2 border border-line font-medium break-all">{val}</div>
+    </div>
+  );
+}
+
+function InfrastructureChain({ result }: { result: ScanJob["result"] }) {
+  if (!result) return null;
+  const web = result.decoupledOwnership;
+  const webOrigin = result.topOriginCandidate;
+
+  return (
+    <Section title="2. LANȚ INFRASTRUCTURĂ" icon={<Network size={18} />}>
+      <div className="grid gap-8 lg:grid-cols-2">
+        <div>
+          <h4 className="text-sm font-semibold text-cyanx mb-4 uppercase">Flux Web</h4>
+          <div className="relative space-y-2 border-l-2 border-line/30 ml-[10.5rem]">
+            <div className="-ml-[10.5rem]"><InfraNode label="Domain" val={result.domain.domain} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="Hostname" val={result.domain.domain} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="IP" val={webOrigin?.ip ?? "UNKNOWN"} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="Prefix" val={web?.ipPrefix?.identity ?? "UNKNOWN"} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="RIR" val={web?.rirAllocation?.identity ?? "UNKNOWN"} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="BGP" val={web?.asnOperation?.identity ?? "UNKNOWN"} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="Network" val={web?.networkOperation?.identity ?? "UNKNOWN"} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="Hosting" val={web?.hostingProvider?.identity ?? "UNKNOWN"} /></div>
+            <div className="-ml-[10.5rem]"><InfraNode label="App / Customer" val={web?.probableCustomer?.identity === "UNKNOWN" ? web?.applicationOperator?.identity ?? "UNKNOWN" : web?.probableCustomer?.identity ?? "UNKNOWN"} /></div>
+          </div>
+        </div>
+
+        <div>
+          <h4 className="text-sm font-semibold text-cyanx mb-4 uppercase">Flux Email</h4>
+          {(() => {
+            const mxs = result.mxInfrastructure?.candidates || [];
+            if (!mxs.length) return <div className="text-muted text-sm">Nu a fost detectată infrastructură de email.</div>;
+            
+            // Group by MX hostname + Email Provider
+            const grouped = new Map<string, typeof mxs>();
+            mxs.forEach(c => {
+              const key = `${c.hostname}::${c.ownershipChain?.emailProvider?.identity}`;
+              if (!grouped.has(key)) grouped.set(key, []);
+              grouped.get(key)!.push(c);
+            });
+
+            return Array.from(grouped.values()).map((group, i) => {
+              const first = group[0];
+              return (
+                <div key={i} className="mb-8 relative space-y-2 border-l-2 border-line/30 ml-[10.5rem]">
+                  <div className="-ml-[10.5rem]"><InfraNode label="Domain" val={result.domain.domain} /></div>
+                  <div className="-ml-[10.5rem]"><InfraNode label="MX" val={first.hostname} /></div>
+                  <div className="-ml-[10.5rem]"><InfraNode label="IP" val={`${group.length} adrese: ${group.map(g => g.ip).join(", ")}`} /></div>
+                  <div className="-ml-[10.5rem]"><InfraNode label="Email Provider" val={first.ownershipChain?.emailProvider?.identity || "UNKNOWN"} /></div>
+                  <div className="-ml-[10.5rem]"><InfraNode label="Provider Status" val={first.ownershipChain?.emailProvider?.status || "UNKNOWN"} /></div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function OriginCandidates({ result }: { result: ScanJob["result"] }) {
+  if (!result || !result.candidates) return null;
+  return (
+    <Section title="3. CANDIDAȚI WEB ORIGIN" icon={<Radar size={18} />}>
+      <div className="space-y-4">
+        {result.candidates.map(c => (
+          <div key={c.ip} className={`card p-4 ${c.inconclusive ? 'bg-amber-900/20 border border-amber-700/50' : 'bg-panel'}`}>
+            {c.inconclusive && (
+              <div className="text-amber-500 text-xs font-bold uppercase mb-3 flex items-center gap-2">
+                <AlertCircle size={14} /> Au fost identificate mai multe candidate pentru Originea Web, cu dovezi echivalente. Sistemul nu poate selecta o singură origine.
+              </div>
+            )}
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <div className="text-xl font-bold flex items-center gap-2">
+                  <span className="text-muted text-sm font-normal">#{c.relativeRank}</span> {c.ip}
+                </div>
+                <div className="text-sm text-muted mt-1">Clasificare: <span className="text-ink font-medium">{c.classification}</span></div>
+                <div className="text-sm text-muted">Nivel de încredere: <span className={`font-semibold ${c.confidenceRating === "HIGH CONFIDENCE" ? "text-blue-500" : c.confidenceRating === "MEDIUM CONFIDENCE" ? "text-blue-400" : "text-blue-300"}`}>{c.confidenceRating}</span> <span className="text-xs text-muted/70">(Indicator intern: {c.confidences.origin}/100)</span></div>
+              </div>
+            </div>
+            
+            <div className="bg-panel2 p-3 rounded mb-4 text-sm">
+              <span className="font-semibold uppercase text-xs text-muted block mb-1">DE CE?</span>
+              {c.explanation.split("\n").map((line, idx) => <p key={idx} className="mb-1">{line}</p>)}
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <EvidenceList title="DOVEZI CARE SUSȚIN CONCLUZIA" items={c.supportingSignals || []} tone="green" />
+              <div className="space-y-4">
+                <EvidenceList title="DOVEZI CONTRADICTORII" items={c.contradictionSignals || []} tone="red" emptyText="Nu au fost identificate dovezi contradictorii relevante." />
+                
+                {c.missingEvidence && c.missingEvidence.length > 0 ? (
+                  <div className="bg-panel2 p-3 rounded text-sm border-l-2 border-amber-500/50">
+                    <span className="font-semibold uppercase text-xs text-amber-500 block mb-1">DOVEZI LIPSĂ</span>
+                    <ul className="list-disc list-inside text-muted">
+                      {c.missingEvidence.map((m: string, i: number) => (
+                        <li key={i}>{m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="text-muted/70 italic text-sm mt-4">Dovezi lipsă: niciuna identificată.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function EvidenceMatrix({ result }: { result: ScanJob["result"] }) {
+  const categoryMap: Record<string, string> = {
+    BGP_ASN: "BGP / ASN",
+    DNS: "DNS",
+    EMAIL: "E-MAIL",
+    EMAIL_AUTH: "AUTENTIFICARE E-MAIL",
+    PORT_SERVICE: "SERVICII / PORTURI",
+    REVERSE_DNS: "REVERSE DNS",
+    TLS: "TLS"
+  };
+
+  if (!result) return null;
+  
+  // Aggregate all evidence from top origin candidate and mx candidates
+  const allSignals: any[] = [];
+  if (result.topOriginCandidate?.evidence) {
+    Object.values(result.topOriginCandidate.evidence).flat().forEach((s: any) => allSignals.push({...s, _context: "Web: " + result.topOriginCandidate!.ip}));
+  }
+  result.mxInfrastructure?.candidates?.forEach(c => {
+    Object.values(c.evidence).flat().forEach((s: any) => allSignals.push({...s, _context: "MX: " + c.ip}));
+  });
+
+  const grouped = allSignals.reduce((acc, s) => {
+    const fam = s.family || "Other";
+    if (!acc[fam]) acc[fam] = [];
+    acc[fam].push(s);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  return (
+    <Section title="4. MATRICEA DOVEZILOR" icon={<Activity size={18} />}>
+      <div className="space-y-6">
+        {Object.keys(grouped).sort().map(fam => (
+          <div key={fam}>
+            <h4 className="text-sm font-bold uppercase mb-2 border-b border-line pb-1 text-cyanx" title={fam}>{categoryMap[fam] || fam}</h4>
+            <div className="grid gap-2">
+              {grouped[fam].map((s: any, i: number) => (
+                <div key={i} className="flex flex-col md:flex-row md:items-start gap-3 p-2 bg-panel2 rounded border border-line text-sm transition-colors">
+                  <div className="w-32 shrink-0 pt-1">
+                    <span className={`text-xs font-semibold px-2 py-1 rounded border ${s.type === 'supporting' ? 'bg-greenx/10 text-greenx border-greenx/20' : s.type === 'contradiction' ? 'bg-redx/10 text-redx border-redx/20' : 'bg-line/30 text-muted border-line'}`}>
+                      {s.type === "neutral" ? "NEUTRAL" : s.type === "supporting" ? "SUPPORTING" : "CONTRADICTION"}
+                    </span>
+                  </div>
+                  <div className="w-24 shrink-0 text-xs text-muted uppercase font-semibold pt-1">{s.strength}</div>
+                  <div className="w-32 shrink-0 font-medium text-ink/80 break-words pt-1">{s._context}</div>
+                  <div className="w-48 shrink-0 font-medium text-ink break-words pt-1">{s.title}</div>
+                  <div className="flex-1 text-muted">
+                    <div className="mb-1">{s.description}</div>
+                    {s.observedData && (
+                      <details className="mt-2 text-xs">
+                        <summary className="cursor-pointer text-cyanx/80 hover:text-cyanx select-none">View observed data</summary>
+                        <div className="mt-2 font-mono text-muted/70 bg-panel p-2 rounded border border-line overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
+                          {s.observedData}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {allSignals.length === 0 && <div className="text-muted">No explicit evidence collected.</div>}
+      </div>
+    </Section>
+  );
+}
+
+function ConclusionDetails({ result }: { result: ScanJob["result"] }) {
+  if (!result || !result.decoupledOwnership) return null;
+  const dec = result.decoupledOwnership;
+  
+  const rules = [
+    { name: "Hosting Provider", obj: dec.hostingProvider },
+    { name: "Application Operator", obj: dec.applicationOperator },
+    { name: "Probable Customer", obj: dec.probableCustomer },
+    { name: "Network Operator", obj: dec.networkOperation },
+  ];
+
+  return (
+    <div className="grid md:grid-cols-2 gap-6 mt-6">
+      <Section title="5. CE SUSȚINE ACEASTĂ CONCLUZIE?" icon={<BookOpen size={18} />}>
+        <div className="space-y-4">
+          {rules.filter(r => r.obj?.identity !== "UNKNOWN" && r.obj).map(r => (
+            <div key={r.name} className="p-3 bg-panel2 border border-line rounded">
+              <div className="font-semibold text-sm mb-1">{r.name}: <span className="text-greenx">{r.obj.identity}</span></div>
+              <div className="text-xs text-muted mb-2">{r.obj.explanation}</div>
+              {r.obj.signals && r.obj.signals.length > 0 && (
+                <div className="text-xs space-y-1">
+                  {r.obj.signals.map((s:any,i:number) => <div key={i} className="pl-2 border-l-2 border-cyanx">{s.title}: {s.observedData}</div>)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Section>
+      <Section title="6. CE NU ESTE STABILIT?" icon={<Shield size={18} />}>
+        <div className="space-y-4">
+          {rules.filter(r => (r.obj?.identity === "UNKNOWN" || r.obj?.confidence < 40) && r.obj).map(r => (
+            <div key={r.name} className="p-3 bg-panel2 border border-line rounded">
+              <div className="font-semibold text-sm mb-1">{r.name}</div>
+              <div className="text-amberx text-xs font-bold mb-2">UNKNOWN</div>
+              <div className="text-xs text-muted"><span className="font-semibold text-ink">Motiv:</span> {r.obj.explanation}</div>
+            </div>
+          ))}
+          {result.mxInfrastructure?.candidates?.map(c => {
+            if (c.ownershipChain?.emailProvider?.identity === "UNKNOWN" || c.ownershipChain?.emailProvider?.status === "Inferred from BGP") {
+              return (
+                <div key={c.ip} className="p-3 bg-panel2 border border-line rounded">
+                  <div className="font-semibold text-sm mb-1">Email Provider ({c.ip}): <span className="text-amberx">{c.ownershipChain.emailProvider.identity}</span></div>
+                  <div className="text-xs text-muted mb-1">Status: {c.ownershipChain.emailProvider.status}</div>
+                  <div className="text-xs text-muted">{c.ownershipChain.emailProvider.explanation}</div>
+                </div>
+              );
+            }
+            return null;
+          })}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function HistoricalData({ result }: { result: ScanJob["result"] }) {
+  if (!result) return null;
+  const hist = result.topOriginCandidate?.evidence?.historical || [];
+  if (hist.length === 0) return null;
+
+  return (
+    <Section title="7. INFRASTRUCTURĂ ISTORICĂ / ASOCIATĂ" icon={<Clock size={18} />}>
+      <div className="grid gap-2">
+        {hist.map((s: any, i: number) => (
+          <div key={i} className="p-3 bg-panel2 border border-line rounded text-sm">
+            <div className="font-semibold text-cyanx mb-1">{s.title}</div>
+            <div className="text-muted mb-1">{s.description}</div>
+            <div className="font-mono text-xs">{s.observedData}</div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function RawEvidence({ result }: { result: ScanJob["result"] }) {
+  if (!result) return null;
+  return (
+    <Section title="8. DOVEZI BRUTE" icon={<TerminalSquare size={18} />}>
+      <div className="space-y-6 opacity-80">
+        <div>
+          <h4 className="text-sm font-semibold mb-2 text-muted uppercase">Informatii IP</h4>
+          <DataTable rows={result.ips.map((ip) => ({
+            ip: ip.ip,
+            asn: ip.asn?.asn ? `AS${ip.asn.asn}` : "necunoscut",
+            org: ip.asn?.org ?? "necunoscut",
+            alocare: ip.rirAllocationOwner ?? ip.networkName ?? "necunoscut",
+            prefix: ip.announcedPrefix ?? ip.asn?.cidr ?? "necunoscut",
+            geo: [ip.geo?.city, ip.geo?.country].filter(Boolean).join(", ") || "necunoscut",
+            furnizor: ip.providerType
+          }))} />
+        </div>
+        <div>
+          <h4 className="text-sm font-semibold mb-2 text-muted uppercase">Inregistrari DNS</h4>
+          <DataTable rows={[
+            { inregistrare: "A", valoare: result.dns.a.join(", ") || "lipsa" },
+            { inregistrare: "MX", valoare: result.dns.mx.map((mx: any) => `${mx.priority} ${mx.exchange}`).join(", ") || "lipsa" },
+            { inregistrare: "TXT", valoare: result.dns.txt.slice(0, 6).join(" | ") || "lipsa" },
+          ]} />
+        </div>
+        <div>
+          <h4 className="text-sm font-semibold mb-2 text-muted uppercase">Porturi Deschise</h4>
+          <DataTable rows={result.ports.map((port) => ({
+            host: port.host,
+            port: port.port,
+            stare: port.state,
+            serviciu: port.service ?? "tcp",
+          }))} />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 function Results({ job }: { job: ScanJob }) {
   if (!job.result) return null;
   const result = job.result;
   return (
-    <div className="mt-6 space-y-6">
-      <div className="grid gap-3 md:grid-cols-3">
-        <StatCard title="Subdomenii" value={result.subdomains.length} />
-        <StatCard title="Profile IP" value={result.ips.length} tone="green" />
-        <StatCard title="Porturi deschise" value={result.ports.length} tone={result.ports.length ? "amber" : "green"} />
-      </div>
-
-      <Section title="Date Inregistrare" icon={<Shield size={18} />}>
-        <DataTable rows={[
-          { camp: "Domeniu", valoare: result.domain.domain },
-          { camp: "Registrar", valoare: result.domain.registrar ?? "necunoscut" },
-          { camp: "Detinator", valoare: result.domain.registrantOrg ?? "necunoscut" },
-          { camp: "Privacy", valoare: result.domain.privacyDetected ? "detectat" : "nedetectat" },
-          { camp: "Nameservere", valoare: result.domain.nameservers.join(", ") || "necunoscut" }
-        ]} />
-      </Section>
-
-      <Section title="Inregistrari DNS" icon={<Globe2 size={18} />}>
-        <DataTable rows={[
-          { inregistrare: "A", valoare: result.dns.a.join(", ") || "lipsa" },
-          { inregistrare: "AAAA", valoare: result.dns.aaaa.join(", ") || "lipsa" },
-          { inregistrare: "NS", valoare: result.dns.ns.join(", ") || "lipsa" },
-          { inregistrare: "MX", valoare: result.dns.mx.map((mx) => `${mx.priority} ${mx.exchange}`).join(", ") || "lipsa" },
-          { inregistrare: "TXT", valoare: result.dns.txt.slice(0, 6).join(" | ") || "lipsa" },
-          { inregistrare: "DNSSEC", valoare: result.dns.dnssec ? "activat" : "neobservat" }
-        ]} />
-      </Section>
-
-      <Section title="Informatii IP" icon={<MapPin size={18} />}>
-        <DataTable rows={result.ips.map((ip) => ({
-          ip: ip.ip,
-          asn: ip.asn.asn ? `AS${ip.asn.asn}` : "necunoscut",
-          org: ip.asn.org ?? "necunoscut",
-          alocare: ip.rirAllocationOwner ?? ip.networkName ?? "necunoscut",
-          prefix: ip.announcedPrefix ?? ip.asn.cidr ?? "necunoscut",
-          geo: [ip.geo.city, ip.geo.country].filter(Boolean).join(", ") || "necunoscut",
-          datacenter: ip.asn.facCount ? `${ip.asn.facCount} locatii fizice` : "necunoscut",
-          furnizor: ip.providerType
-        }))} />
-      </Section>
-
-      <Section title="Analiza Infrastructurii de Baza (Host Real)" icon={<Building2 size={18} />}>
-        <div className="mb-6 p-4 bg-ink/5 border border-line rounded-lg text-ink/90 text-sm leading-relaxed">
-          {(() => {
-            const isProxy = result.infrastructure.roleProviders.some(p => p.name.toLowerCase().includes("cloudflare") || p.name.toLowerCase().includes("akamai") || p.name.toLowerCase().includes("fastly") || p.name.toLowerCase().includes("incapsula"));
-            const proxies = result.infrastructure.roleProviders.map(p => p.name).join(", ");
-            const hasLeak = result.origins && result.origins.length > 0;
-            const originHigh = hasLeak ? result.origins.find(o => o.confidence === "high") : undefined;
-            const originBase = originHigh || (hasLeak ? result.origins[0] : null);
-
-            let narrative = "";
-            if (isProxy) {
-              narrative += `Domeniul principal este protejat și rutat printr-un sistem Proxy/WAF/CDN (${proxies}). Aceasta înseamnă că adresa IP publică a site-ului nu reprezintă locația fizică reală a serverului. `;
-              if (hasLeak) {
-                narrative += `Cu toate acestea, sistemul a reușit să identifice un **Origin Leak** (prin înregistrări DNS secundare, MX sau un certificat TLS expus). Adresa de origine candidat identificată este **${originBase?.ip}**. `;
-                narrative += `Analizând această adresă, concluzionăm că **infrastructura de bază reală este găzduită de ${originBase?.provider}**.`;
-              } else {
-                narrative += `Nu au putut fi găsite scurgeri de date pasive care să expună adresa de origine internă, deci host-ul real rămâne strict ascuns în spatele rețelei de proxy.`;
-              }
-            } else {
-              narrative += `Domeniul NU folosește un sistem Proxy/CDN recunoscut, ci pare a fi rezolvat direct către serverul final. `;
-              if (result.infrastructure.ipChains.length > 0) {
-                const chain = result.infrastructure.ipChains[0];
-                const realOrg = chain.allocation.originOrg || chain.allocation.allocationOwner || chain.allocation.networkName;
-                narrative += `Verdictul infrastructurii este "${result.infrastructure.verdict}" (Încredere: ${result.infrastructure.confidence}). `;
-                narrative += `Concluzionăm că **infrastructura de bază este găzduită direct de ${realOrg}**.`;
-              } else {
-                narrative += `Din păcate, nu s-au putut extrage date BGP/RDAP pentru a determina proprietarul alocării.`;
-              }
-            }
-            // Parse simple markdown-like bold tags for UI
-            return <span dangerouslySetInnerHTML={{ __html: narrative.replace(/\*\*(.*?)\*\*/g, '<strong class="text-cyanx font-semibold">$1</strong>') }} />;
-          })()}
-        </div>
-
-        {result.infrastructure.ipChains.length > 0 && (
-          <div className="mb-6">
-            <h4 className="text-sm font-semibold mb-2 text-muted uppercase">Lantul de Alocare (Suprafata)</h4>
-            <DataTable rows={result.infrastructure.ipChains.map((chain) => ({
-              ip: chain.ip,
-              rol: chain.providerRole,
-              proprietar_bgp: chain.allocation.originOrg ?? "necunoscut",
-              alocare_rdap: chain.allocation.allocationOwner ?? chain.allocation.networkName ?? "necunoscut",
-              dovezi_subinchiriere: chain.leaseSignals.length ? chain.leaseSignals.map((signal) => signal.message).join(" | ") : "N/A"
-            }))} />
-          </div>
-        )}
-
-        {result.origins && result.origins.length > 0 && (
-          <div>
-            <h4 className="text-sm font-semibold mb-2 text-muted uppercase">IP-uri Origine</h4>
-            <DataTable rows={result.origins.map((origin) => ({
-              ip_origine: origin.ip,
-              provider_real: origin.provider,
-              incredere: origin.confidence.toUpperCase(),
-              sursa_scurgere: origin.source
-            }))} />
-          </div>
-        )}
-      </Section>
-
-      <CandidateEvidence result={result} />
-
-      <Section title="HTTP TLS" icon={<Activity size={18} />}>
-        <DataTable rows={result.http.map((http) => ({
-          url: http.url,
-          status: http.status ?? "n/a",
-          tehnologii: http.technologies.join(", ") || "necunoscut",
-          amprenta_eroare: http.errorSignature ?? "N/A",
-          sensibil: http.sensitiveFiles?.join(", ") || "lipsa",
-          vhost: http.vhostResponses ? Object.keys(http.vhostResponses).length + " testate" : "n/a",
-          quic: http.quicSupported ? "Suportat" : "Nu"
-        }))} />
-      </Section>
-
-      <Section title="Retea si Porturi" icon={<TerminalSquare size={18} />}>
-        <div className="mb-6">
-          <h4 className="text-sm font-semibold mb-2 text-muted uppercase">Traseu Retea (Traceroute)</h4>
-          <DataTable rows={result.network.map((hop) => ({
-            hop: hop.hop,
-            host: hop.host ?? "N/A",
-            ip: hop.ip ?? "N/A",
-            ms: hop.rttMs ?? "N/A",
-            locatie: hop.geo?.city ?? "necunoscut"
-          }))} />
-        </div>
-        <h4 className="text-sm font-semibold mb-2 text-muted uppercase">Porturi Deschise</h4>
-        <DataTable rows={result.ports.map((port) => ({
-          host: port.host,
-          port: port.port,
-          stare: port.state,
-          serviciu: port.service ?? "tcp",
-          versiune: port.version ?? "necunoscut",
-          sursa: port.source
-        }))} />
-      </Section>
-
+    <div className="mt-6 space-y-8">
+      <ScanSummary result={result} />
+      <AttributionSummary result={result} />
+      <InfrastructureChain result={result} />
+      <OriginCandidates result={result} />
+      <EvidenceMatrix result={result} />
+      <ConclusionDetails result={result} />
+      <HistoricalData result={result} />
+      <RawEvidence result={result} />
     </div>
   );
 }

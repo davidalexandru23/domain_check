@@ -236,56 +236,93 @@ export type HttpProfile = {
 
 
 
-export type EvidenceType = "supporting" | "contradiction";
-export type EvidenceCategory =
-  | "dns"
-  | "tls"
-  | "http"
-  | "ptr"
-  | "asn"
-  | "waf"
-  | "subdomain"
-  | "mx"
-  | "port";
+export type EvidenceType = "supporting" | "contradiction" | "neutral";
+export type EvidenceFamily =
+  | "DNS"
+  | "TLS"
+  | "HTTP"
+  | "Certificate"
+  | "BGP_ASN"
+  | "RIR_RDAP"
+  | "Reverse_DNS"
+  | "Historical"
+  | "Infrastructure"
+  | "Port_Service"
+  | "Geolocation"
+  | "Email"
+  | "Email_Auth";
 
 export type EvidenceSignal = {
   id: string;
   type: EvidenceType;
-  category: EvidenceCategory;
-  weight: number;
+  family: EvidenceFamily;
+  strength: "strong" | "medium" | "weak";
   title: string;
   description: string;
-  observedData?: string;
-  source?: string;
+  observedData: string;
+  source: string;
+  timestamp: string;
+  relation: string;
 };
 
 export type EvidenceItem = EvidenceSignal;
 
 export type CandidateClassification =
-  | "likely-origin"
-  | "possible-origin"
-  | "unverified-leak"
-  | "cdn-proxy"
-  | "shared-hosting"
+  | "direct web origin"
+  | "probable origin"
+  | "possible origin"
+  | "CDN/WAF edge"
+  | "shared hosting"
+  | "unrelated"
   | "email-only";
 
 export type ScoreClassification = CandidateClassification;
 
+export type AttributionConfidences = {
+  origin: number;
+  hosting: number;
+  network: number;
+  allocation: number;
+  application: number;
+  customer: number;
+  geo: number;
+  email: number;
+};
+
+export type EvidenceBucket = {
+  dns: EvidenceSignal[];
+  subdomain: EvidenceSignal[];
+  ct: EvidenceSignal[];
+  http: EvidenceSignal[];
+  tls: EvidenceSignal[];
+  ptr: EvidenceSignal[];
+  port: EvidenceSignal[];
+  bgp: EvidenceSignal[];
+  rir: EvidenceSignal[];
+  infrastructure: EvidenceSignal[];
+  mx: EvidenceSignal[];
+  historical: EvidenceSignal[];
+};
+
 export type OriginCandidateDetailed = {
   ip: string;
   domain: string;
-  classification: CandidateClassification;
-  score: number;
-  totalScore?: number;
+  classification: "direct web origin" | "probable origin" | "possible origin" | "CDN/WAF edge" | "shared hosting" | "email-only" | "unrelated";
+  evidence: EvidenceBucket;
+  ownershipChain: DecoupledOwnershipModel;
+  confidenceRating: "HIGH CONFIDENCE" | "MEDIUM CONFIDENCE" | "LOW CONFIDENCE" | "NOT ESTABLISHED";
+  explanation: string;
+  // Legacy fields below (to keep UI from completely breaking if it relies on them)
+  score: number; 
+  confidences: AttributionConfidences;
   supportingSignals: EvidenceSignal[];
   contradictionSignals: EvidenceSignal[];
   provider: string;
   asn: string;
   location: string;
-  rawSignals: Record<string, any>;
-  explanation: string;
-  source?: string;
-  confidence?: "high" | "medium" | "low";
+  relativeRank?: number;
+  missingEvidence?: string[];
+  inconclusive?: boolean;
 };
 
 export type ConfidenceRating = "high" | "medium" | "low" | "none";
@@ -297,13 +334,15 @@ export type ConceptConfidence = {
 };
 
 export type OwnershipConceptType =
-  | "domainOwner"
-  | "ipAllocation"
+  | "ipPrefix"
+  | "rirAllocation"
   | "asnOperation"
   | "networkOperation"
   | "hostingProvider"
-  | "applicationOrigin"
-  | "physicalLocation";
+  | "applicationOperator"
+  | "emailProvider"
+  | "probableCustomer"
+  | "estimatedLocation";
 
 export type OwnershipConcept = {
   concept: OwnershipConceptType;
@@ -314,24 +353,47 @@ export type OwnershipConcept = {
   evidenceCount: number;
   explanation: string;
   details?: Record<string, any>;
+  signals?: EvidenceSignal[];
+  status?: "Confirmed" | "Inferred from BGP" | "Unknown" | "Inferred";
 };
 
 export type DecoupledOwnershipModel = {
-  domainOwner: OwnershipConcept;
-  ipAllocation: OwnershipConcept;
+  ipPrefix: OwnershipConcept;
+  rirAllocation: OwnershipConcept;
   asnOperation: OwnershipConcept;
   networkOperation: OwnershipConcept;
   hostingProvider: OwnershipConcept;
-  applicationOrigin: OwnershipConcept;
-  physicalLocation: OwnershipConcept;
+  applicationOperator: OwnershipConcept;
+  probableCustomer: OwnershipConcept;
+  estimatedLocation: OwnershipConcept;
+};
+
+export type EmailOwnershipModel = {
+  ipPrefix: OwnershipConcept;
+  rirAllocation: OwnershipConcept;
+  asnOperation: OwnershipConcept;
+  networkOperation: OwnershipConcept;
+  emailProvider: OwnershipConcept;
+  applicationOperator: OwnershipConcept;
+  probableCustomer: OwnershipConcept;
+  estimatedLocation: OwnershipConcept;
+};
+
+export type MxCandidateDetailed = {
+  ip: string;
+  hostname: string;
+  priority: number;
+  ownershipChain: EmailOwnershipModel;
+  evidence: EvidenceBucket;
 };
 
 export type MxInfrastructureSummary = {
   domain: string;
-  mxRecords: string[];
+  mxRecords: { exchange: string; priority: number }[];
   ips: string[];
   providers: string[];
   isolatedFromWebOrigin: boolean;
+  candidates: MxCandidateDetailed[];
 };
 
 export type NarrativeVerdict = {

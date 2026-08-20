@@ -8,10 +8,10 @@ import { getDomainProfile } from "./modules/domain.js";
 import { collectHttp, inspectTls } from "./modules/http.js";
 import { collectCtSubdomains } from "./modules/passive.js";
 import { getIpProfile } from "./modules/ip.js";
-import { collectAllEvidence } from "./modules/evidenceEngine.js";
+import { collectAllEvidence, collectHistoricalEvidence, collectMxEvidence } from "./modules/evidenceEngine.js";
 import { grabBanners, runDiscreteNmap, runTraceroute } from "./modules/active.js";
 import { buildInfrastructureSupplyChain } from "./modules/infrastructure.js";
-import { computeDecoupledOwnership } from "./engine/ownership.js";
+// removed import
 import { classifyProvider, delayByPolicy, limitList, normalizeTarget, unique } from "./utils.js";
 
 export type ProgressSink = (progress: Omit<ScanProgress, "scanId" | "at">) => void;
@@ -253,6 +253,20 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
   const candidates: OriginCandidateDetailed[] = [];
   for (const ip of candidateIps) {
     const ipProfile = ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs);
+    
+    // Etapa 6: Collect historical/external evidence
+    let historicalData: Awaited<ReturnType<typeof collectHistoricalEvidence>> | undefined;
+    if (options.infrastructureTrace) {
+      try {
+        historicalData = await collectHistoricalEvidence(
+          ip, domain,
+          ipProfile.asn.asn,
+          ipProfile.announcedPrefix,
+          options.timeoutMs
+        );
+      } catch { /* historical enrichment failed, continue without it */ }
+    }
+
     const candidate = await collectAllEvidence({
       domain,
       ip,
@@ -264,46 +278,94 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
       mxIps: Array.from(mxIps),
       subdomainHosts: Array.from(candidateSources.get(ip) ?? []),
       registrantOrg: profile.registrantOrg,
-      timeoutMs: options.timeoutMs
+      timeoutMs: options.timeoutMs,
+      // Etapa 6 data
+      ctCertificates: historicalData?.ctCerts,
+      peeringDbInfo: historicalData?.peeringDb,
+      rpkiStatus: historicalData?.rpki,
+      historicalPrefixes: historicalData?.historicalPrefixes
     });
     candidates.push(candidate);
   }
 
-  // Determine top candidate by score
-  let topOriginCandidate: OriginCandidateDetailed | undefined = undefined;
-  if (candidates.length) {
-    topOriginCandidate = candidates.reduce((best, cur) => (cur.score > best.score ? cur : best), candidates[0]);
-  }
+  // Determine top candidate by score (Etapa 9 Heuristics & Etapa 11 Separation)
+  candidates.sort((a, b) => b.confidences.origin - a.confidences.origin);
+  
+  const webCandidates = candidates.filter(c => c.classification !== "email-only");
+  
+  if (webCandidates.length > 0) {
+    let currentRank = 1;
+    webCandidates[0].relativeRank = 1;
+    for (let i = 1; i < webCandidates.length; i++) {
+      if (webCandidates[i].confidences.origin < webCandidates[i-1].confidences.origin) {
+        currentRank = i + 1;
+      }
+      webCandidates[i].relativeRank = currentRank;
+    }
 
-  const mxProfiles = [];
-  for (const ip of mxIps) {
-    try {
-      mxProfiles.push(ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs));
-    } catch {
-      // a continua fara profil MX
+    if (webCandidates.length > 1 && webCandidates[0].confidences.origin === webCandidates[1].confidences.origin) {
+      // Inconclusive if top two are equal
+      webCandidates.forEach(c => {
+        if (c.confidences.origin === webCandidates[0].confidences.origin) {
+          c.inconclusive = true;
+          c.explanation = "Au fost identificate mai multe candidate pentru Originea Web, cu dovezi echivalente. Sistemul nu poate selecta în mod justificat o singură origine.\n\n" + c.explanation;
+        }
+      });
     }
   }
+
+  // Remove email-only candidates from the main web candidates list
+  const finalCandidates = webCandidates;
+  const topOriginCandidate = finalCandidates.length ? finalCandidates[0] : undefined;
+  
+  // Actually, we must assign finalCandidates to candidates so they don't appear in WEB ORIGIN CANDIDATES section
+  // But wait, where did we assign `candidates` to `ScanResult`?
+  // Let's just filter it in place:
+  candidates.splice(0, candidates.length, ...finalCandidates);
+
+
+  const mxCandidates = [];
+  const mxProfiles = [];
+  for (const mx of dnsResult.mx) {
+    // find IPs for this MX hostname
+    let mxTargetIps = [];
+    if (mx.exchange) {
+      try {
+        const dnsModule = await import("node:dns/promises");
+        const mxA = await dnsModule.resolve4(mx.exchange);
+        mxTargetIps.push(...mxA);
+      } catch { /* ignore */ }
+    }
+    for (const ip of unique(mxTargetIps)) {
+      try {
+        const profile = ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs);
+        mxProfiles.push(profile);
+        const mxCandidate = await collectMxEvidence({
+          domain, ip, ipProfile: profile, dnsResult, httpResults: http, tlsResults: tls, ports, mxIps: Array.from(mxIps), subdomainHosts: Array.from(candidateSources.get(ip) ?? []), registrantOrg: undefined, timeoutMs: options.timeoutMs
+        }, mx.exchange, mx.priority);
+        mxCandidates.push(mxCandidate);
+      } catch {
+        // a continua fara profil MX
+      }
+    }
+  }
+
   const mxInfrastructure: MxInfrastructureSummary = {
     domain,
-    mxRecords: dnsResult.mx.map((m: { exchange: string; priority: number }) => m.exchange),
+    mxRecords: dnsResult.mx,
     ips: Array.from(mxIps),
     providers: unique(mxProfiles.map((profile) => profile.asn.org ?? profile.rirAllocationOwner ?? profile.networkName).filter((provider): provider is string => Boolean(provider))),
-    isolatedFromWebOrigin: Array.from(mxIps).every((ip) => !dnsResult.a.includes(ip) && !origins.some((origin) => origin.ip === ip))
+    isolatedFromWebOrigin: Array.from(mxIps).every((ip) => !dnsResult.a.includes(ip) && !origins.some((origin) => origin.ip === ip)),
+    candidates: mxCandidates
   };
 
   const topIpProfile = topOriginCandidate ? ips.find((ip) => ip.ip === topOriginCandidate.ip) : undefined;
-  const decoupledOwnership = computeDecoupledOwnership({
-    domain: profile,
-    topCandidate: topOriginCandidate,
-    candidates,
-    ipProfile: topIpProfile,
-    infrastructure: supplyChain.infrastructure
-  });
+  const decoupledOwnership = topOriginCandidate?.ownershipChain;
 
   const narrativeVerdict: NarrativeVerdict = {
-    summary: topOriginCandidate ? `Top origin candidate ${topOriginCandidate.ip} scored ${topOriginCandidate.score}/100` : "No origin candidate identified",
+    summary: topOriginCandidate ? `Top origin candidate ${topOriginCandidate.ip} scored ${topOriginCandidate.confidences.origin}/100` : "No origin candidate identified",
     classification: topOriginCandidate?.classification ?? "unknown",
-    confidenceScore: topOriginCandidate?.score ?? 0,
+    confidenceScore: topOriginCandidate?.confidences.origin ?? 0,
     explanation: topOriginCandidate?.explanation ?? "No evidence-backed origin candidate could be selected from the observed DNS, HTTP, TLS and network data.",
     keyEvidence: topOriginCandidate ? topOriginCandidate.supportingSignals.map(s => s.title) : []
   };

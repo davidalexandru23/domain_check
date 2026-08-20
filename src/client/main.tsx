@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Activity, Building2, Globe2, Mail, MapPin, Network, Play, Radar, Shield, TerminalSquare, BookOpen, Clock, ArrowLeft, AlertCircle } from "lucide-react";
 import type { ActiveOptions, ScanJob, ScanMode, ScanResult } from "../shared/types";
+import { Documentation } from "./Documentation";
 import "./styles.css";
 
 const api = {
@@ -546,10 +547,10 @@ function ConclusionDetails({ result }: { result: ScanJob["result"] }) {
   const dec = result.decoupledOwnership;
   
   const rules = [
-    { name: "Hosting Provider", obj: dec.hostingProvider },
-    { name: "Application Operator", obj: dec.applicationOperator },
+    { name: "Furnizor hosting", obj: dec.hostingProvider },
+    { name: "Operator aplicație", obj: dec.applicationOperator },
     { name: "Probable Customer", obj: dec.probableCustomer },
-    { name: "Network Operator", obj: dec.networkOperation },
+    { name: "Operator rețea", obj: dec.networkOperation },
   ];
 
   return (
@@ -574,15 +575,14 @@ function ConclusionDetails({ result }: { result: ScanJob["result"] }) {
           {rules.filter(r => (r.obj?.identity === "UNKNOWN" || r.obj?.confidence < 40) && r.obj).map(r => (
             <div key={r.name} className="p-3 bg-panel2 border border-line rounded">
               <div className="font-semibold text-sm mb-1">{r.name}</div>
-              <div className="text-amberx text-xs font-bold mb-2">UNKNOWN</div>
-              <div className="text-xs text-muted"><span className="font-semibold text-ink">Motiv:</span> {r.obj.explanation}</div>
+              <div className="text-xs text-muted mt-2"><span className="font-semibold text-ink">Motiv:</span> {r.obj.explanation || "Evidence insuficientă."}</div>
             </div>
           ))}
           {result.mxInfrastructure?.candidates?.map(c => {
             if (c.ownershipChain?.emailProvider?.identity === "UNKNOWN" || c.ownershipChain?.emailProvider?.status === "Inferred from BGP") {
               return (
                 <div key={c.ip} className="p-3 bg-panel2 border border-line rounded">
-                  <div className="font-semibold text-sm mb-1">Email Provider ({c.ip}): <span className="text-amberx">{c.ownershipChain.emailProvider.identity}</span></div>
+                  <div className="font-semibold text-sm mb-1">Furnizor e-mail ({c.ip}): <span className={c.ownershipChain.emailProvider.identity === 'UNKNOWN' ? 'text-amberx font-bold' : 'text-greenx'}>{c.ownershipChain.emailProvider.identity}</span></div>
                   <div className="text-xs text-muted mb-1">Status: {c.ownershipChain.emailProvider.status}</div>
                   <div className="text-xs text-muted">{c.ownershipChain.emailProvider.explanation}</div>
                 </div>
@@ -668,88 +668,6 @@ function Results({ job }: { job: ScanJob }) {
       <ConclusionDetails result={result} />
       <HistoricalData result={result} />
       <RawEvidence result={result} />
-    </div>
-  );
-}
-
-function Documentation({ onBack }: { onBack: () => void }) {
-  const sources = [
-    ["crt.sh", "crt.sh", "Certificate Transparency logs, subdomenii si certificate timeline", "Public, gratuit"],
-    ["ip-api.com", "ip-api.com", "GeoIP, ASN, ISP si organizatie", "Public, gratuit, rate limited"],
-    ["RDAP", "rdap.org", "Alocare IP, proprietar retea, RIR data", "Public, gratuit"],
-    ["RIPE Stat", "stat.ripe.net", "BGP routing status, ASN neighbours, prefix info", "Public, gratuit"],
-    ["PeeringDB", "peeringdb.com", "Tip retea, IX presence, facility presence", "Public, gratuit"],
-    ["DNS public", "node:dns", "A, AAAA, MX, NS, TXT, SOA, CAA, PTR, DNSSEC", "System resolver"],
-    ["HTTP/TLS direct", "Direct connections", "Headers, certificat TLS, SAN, technologies, fisiere sensibile", "Direct probe"],
-    ["Nmap", "Local binary", "Porturi deschise si service detection", "Local tool"],
-    ["Traceroute", "Local binary", "Network path, hops, RTT", "Local tool"]
-  ];
-  const weights = [
-    ["DNS A record match", "+10", "IP-ul apare direct in A/AAAA pentru domeniu"],
-    ["DNS subdomain leak", "+15", "IP-ul apare in subdomenii care pot expune origin"],
-    ["TLS SAN confirmat", "+30", "Handshake TLS pe IP cu SNI domeniu returneaza certificat potrivit"],
-    ["HTTP content match", "+25", "Cererea catre IP cu Host header seamana cu raspunsul public"],
-    ["Hosting ASN consistent", "+15", "ASN/RDAP se potriveste cu detinatorul domeniului"],
-    ["PTR consistent", "+10", "Reverse DNS contine domeniul sau organizatia"],
-    ["BGP origin consistent", "+10", "Origin ASN este consistent cu profilul IP"],
-    ["CDN signature", "-30", "IP-ul apartine CDN/WAF sau edge proxy"],
-    ["MX-only IP", "-20", "IP-ul este asociat doar cu infrastructura email"],
-    ["HTTP unreachable", "-10", "IP-ul nu raspunde la HTTP cu Host header"],
-    ["Shared infrastructure", "-15", "Semnale de cloud/shared hosting fara confirmare origin"]
-  ];
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-8 animate-in fade-in">
-      <button onClick={onBack} className="btn-ghost mb-6 flex items-center gap-2 text-muted hover:text-ink">
-        <ArrowLeft size={18} />
-        Inapoi la Dashboard
-      </button>
-
-      <h1 className="mb-4 flex items-center gap-2 text-3xl font-semibold text-cyanx">
-        <BookOpen size={28} />
-        Documentatie - Evidence Correlation Engine
-      </h1>
-      <p className="mb-8 text-lg text-muted">
-        Aceasta pagina descrie sursele de date interogate, cum sunt corelate rezultatele si cum este calculat scorul pentru candidatii origin.
-      </p>
-
-      <div className="space-y-8">
-        <div className="card">
-          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Surse de Date Interogare</h2>
-          <DataTable rows={sources.map(([serviciu, url, furnizeaza, acces]) => ({ serviciu, url, furnizeaza, acces }))} />
-        </div>
-
-        <div className="card">
-          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Cum sunt Corelate Datele</h2>
-          <div className="space-y-3 text-sm text-ink/80">
-            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">1. DNS si CT</strong> - Domeniul, subdomeniile si MX-urile sunt rezolvate la IP-uri candidate.</div>
-            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">2. IP enrichment</strong> - Fiecare IP primeste ASN, RDAP allocation, GeoIP, provider type si BGP origin.</div>
-            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">3. Direct probes</strong> - Pentru fiecare IP se face TLS SNI cu domeniul si HTTP GET cu Host header egal cu domeniul.</div>
-            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">4. Contradictii</strong> - CDN/WAF, MX-only, HTTP unreachable si shared infrastructure scad scorul.</div>
-            <div className="rounded border border-line bg-ink/5 p-3"><strong className="text-ink">5. Verdict</strong> - Evidence Engine agrega semnalele si produce score, clasificare si explicatie pentru fiecare candidat.</div>
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Cum Functioneaza Scorul</h2>
-          <DataTable rows={weights.map(([semnal, pondere, descriere]) => ({ semnal, pondere, descriere }))} />
-          <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
-            <div className="rounded border border-line bg-panel2 p-3"><strong className="text-greenx">70-100</strong><br />likely-origin</div>
-            <div className="rounded border border-line bg-panel2 p-3"><strong className="text-amberx">40-69</strong><br />possible-origin</div>
-            <div className="rounded border border-line bg-panel2 p-3"><strong className="text-redx">0-39</strong><br />unverified, cdn-proxy, shared-hosting sau email-only</div>
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="mb-3 border-b border-line pb-2 text-xl font-semibold">Lantul de Alocare</h2>
-          <div className="space-y-3 text-sm text-ink/80">
-            <div><strong className="text-ink">RIR</strong> - identifica registrul regional si blocul IP.</div>
-            <div><strong className="text-ink">RDAP</strong> - identifica network name, allocation owner si parent network.</div>
-            <div><strong className="text-ink">BGP</strong> - identifica origin ASN, announced prefix si neighbours.</div>
-            <div><strong className="text-ink">Upstreams</strong> - arata relatii de tranzit si indicii de subinchiriere.</div>
-            <div><strong className="text-ink">Verdict</strong> - marcheaza in-house, direct provider, CDN/proxy, reseller sau likely subleased network.</div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -910,7 +828,7 @@ function App() {
   if (page === "docs") {
     return (
       <main className="min-h-screen text-ink">
-        <Documentation onBack={() => setPage("dashboard")} />
+        <Documentation onClose={() => setPage("dashboard")} />
       </main>
     );
   }

@@ -31,6 +31,7 @@ export type ActiveOptions = {
 };
 
 export type ScanRequest = {
+  targetType?: "domain" | "ip" | "email";
   target: string;
   mode: ScanMode;
   options?: Partial<ActiveOptions>;
@@ -265,8 +266,6 @@ export type EvidenceSignal = {
   relation: string;
 };
 
-export type EvidenceItem = EvidenceSignal;
-
 export type CandidateClassification =
   | "direct web origin"
   | "probable origin"
@@ -275,8 +274,6 @@ export type CandidateClassification =
   | "shared hosting"
   | "unrelated"
   | "email-only";
-
-export type ScoreClassification = CandidateClassification;
 
 export type AttributionConfidences = {
   origin: number;
@@ -326,12 +323,6 @@ export type OriginCandidateDetailed = {
 };
 
 export type ConfidenceRating = "high" | "medium" | "low" | "none";
-
-export type ConceptConfidence = {
-  score: number;
-  rating: ConfidenceRating;
-  rationale: string;
-};
 
 export type OwnershipConceptType =
   | "ipPrefix"
@@ -420,6 +411,9 @@ export type OriginCandidate = {
 };
 
 export type ScanResult = {
+  targetType?: "domain" | "ip" | "email";
+  originalTarget?: string;
+  dnsHistory?: DnsHistoryEntry[];
   id?: string;
   targetDomain?: string;
   timestamp?: string;
@@ -467,4 +461,13 @@ export type ScanJob = {
   progress: ScanProgress[];
   result?: ScanResult;
   error?: string;
+};
+
+
+export type DnsHistoryEntry = {
+  type: "A" | "NS" | "MX";
+  value: string;
+  firstSeen?: string;
+  lastSeen?: string;
+  source: string;
 };

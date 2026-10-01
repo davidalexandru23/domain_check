@@ -616,6 +616,42 @@ function HistoricalData({ result }: { result: ScanJob["result"] }) {
   );
 }
 
+
+
+function syntaxHighlight(json: string) {
+  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+    let cls = 'text-cyanx';
+    if (/^"/.test(match)) {
+      if (/:$/.test(match)) {
+        cls = 'text-red-400 font-semibold';
+      } else {
+        cls = 'text-green-400';
+      }
+    } else if (/true|false/.test(match)) {
+      cls = 'text-blue-400 font-bold';
+    } else if (/null/.test(match)) {
+      cls = 'text-gray-500 italic';
+    }
+    return '<span class="' + cls + '">' + match + '</span>';
+  });
+}
+
+function RawJsonOutput({ result }: { result: ScanJob["result"] }) {
+  if (!result) return null;
+  const jsonStr = JSON.stringify(result, null, 2);
+  return (
+    <Section title="JSON RAW OUTPUT" icon={<TerminalSquare size={18} />}>
+      <div 
+        className="bg-[#1e1e1e] p-4 rounded border border-line overflow-auto max-h-[600px] text-xs font-mono whitespace-pre"
+        dangerouslySetInnerHTML={{ __html: syntaxHighlight(jsonStr) }}
+      />
+    </Section>
+  );
+}
+
+
+
 function RawEvidence({ result }: { result: ScanJob["result"] }) {
   if (!result) return null;
   return (
@@ -655,19 +691,80 @@ function RawEvidence({ result }: { result: ScanJob["result"] }) {
   );
 }
 
+
+function DnsHistory({ result }: { result: ScanResult }) {
+  if (!result.dnsHistory || result.dnsHistory.length === 0) return null;
+  return (
+    <div className="card mt-6">
+      <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+        <Clock size={20} className="text-cyanx" /> Istoric DNS & Infrastructură
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-panel2">
+            <tr>
+              <th className="px-4 py-2 text-muted font-semibold">Tip</th>
+              <th className="px-4 py-2 text-muted font-semibold">Valoare</th>
+              <th className="px-4 py-2 text-muted font-semibold">First Seen</th>
+              <th className="px-4 py-2 text-muted font-semibold">Last Seen</th>
+              <th className="px-4 py-2 text-muted font-semibold">Sursă</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {result.dnsHistory.map((h, i) => (
+              <tr key={i} className="hover:bg-panel2/50">
+                <td className="px-4 py-2 font-medium">{h.type}</td>
+                <td className="px-4 py-2">{h.value}</td>
+                <td className="px-4 py-2">{h.firstSeen || "-"}</td>
+                <td className="px-4 py-2">{h.lastSeen || "-"}</td>
+                <td className="px-4 py-2 text-muted">{h.source}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+
+function TargetContextBanner({ result }: { result: ScanResult }) {
+  if (result.targetType === "domain" || !result.targetType) return null;
+  return (
+    <div className="mb-6 rounded border border-cyanx/40 bg-cyanx/5 px-4 py-3 flex items-start gap-3">
+      <AlertCircle size={20} className="text-cyanx shrink-0 mt-0.5" />
+      <div>
+        <h3 className="font-semibold text-cyanx">
+          {result.targetType === "ip" ? "Analiză IP Direct" : "Analiză Adresă Email"}
+        </h3>
+        <p className="text-sm text-ink/80 mt-1">
+          {result.targetType === "ip" 
+            ? `Sistemul analizează direct adresa IP ${result.originalTarget}. Faza de DNS și subdomenii a fost ignorată pentru a accelera analiza de rețea (ASN, GeoIP, TLS, HTTP).`
+            : `Analiza a extras domeniul ${result.domain.domain} din adresa ${result.originalTarget}. Raportul este orientat spre verificarea serverelor MX și a politicilor DMARC/SPF.`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
 function Results({ job }: { job: ScanJob }) {
   if (!job.result) return null;
   const result = job.result;
   return (
     <div className="mt-6 space-y-8">
+      <TargetContextBanner result={result} />
+      <ConclusionDetails result={result} />
       <ScanSummary result={result} />
       <AttributionSummary result={result} />
-      <InfrastructureChain result={result} />
       <OriginCandidates result={result} />
       <EvidenceMatrix result={result} />
-      <ConclusionDetails result={result} />
+      <InfrastructureChain result={result} />
       <HistoricalData result={result} />
+      <DnsHistory result={result} />
       <RawEvidence result={result} />
+      <RawJsonOutput result={result} />
     </div>
   );
 }
@@ -857,7 +954,7 @@ function App() {
             <section className="grid gap-4">
               <div className="card">
                 <label className="text-xs uppercase tracking-wide text-muted font-semibold">Domeniu Tinta</label>
-                <input className="input mt-2 font-medium" value={target} onChange={(event) => setTarget(event.target.value)} placeholder="domeniu.ro sau IP" />
+                <input className="input mt-2 font-medium" value={target} onChange={(event) => setTarget(event.target.value)} placeholder="domeniu.ro, 1.1.1.1 sau nume@domeniu.ro" />
 
               </div>
             </section>

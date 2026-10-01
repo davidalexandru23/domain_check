@@ -13,16 +13,28 @@ export const normalizeTarget = (target: string) => {
   return withoutScheme.split("/")[0].replace(/:\d+$/, "");
 };
 
-export const isIp = (value: string) => net.isIP(value) !== 0;
+export type TargetContext = { type: "domain" | "ip" | "email"; normalized: string; original: string };
+
+export const parseTargetContext = (target: string): TargetContext => {
+  const original = target.trim();
+  let normalized = original.toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/:\d+$/, "");
+  
+  if (normalized.includes("@")) {
+    const parts = normalized.split("@");
+    return { type: "email", normalized: parts[parts.length - 1], original };
+  }
+  
+  if (net.isIP(normalized) !== 0) {
+    return { type: "ip", normalized, original };
+  }
+  
+  return { type: "domain", normalized, original };
+};
+
+
 
 export const unique = <T>(values: T[]) => Array.from(new Set(values.filter(Boolean)));
 
-export const withTimeout = async <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
-  const timeout = sleep(ms).then(() => {
-    throw new Error(`${label} timeout after ${ms}ms`);
-  });
-  return Promise.race([promise, timeout]) as Promise<T>;
-};
 
 export const fetchJson = async <T>(url: string, timeoutMs: number): Promise<T> => {
   const controller = new AbortController();
@@ -91,26 +103,5 @@ export const classifyProvider = (org?: string) => {
 
 export const stripHtml = (html: string) => html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
 
-export const extractEmailContext = (text: string, email: string, radius: number = 70): string => {
-  if (!text || !email) return "";
-  const lowerText = text.toLowerCase();
-  const lowerEmail = email.toLowerCase();
-  let index = lowerText.indexOf(lowerEmail);
-  if (index === -1) {
-    const local = lowerEmail.split("@")[0];
-    if (local && local.length >= 2) {
-      index = lowerText.indexOf(local);
-    }
-  }
-  if (index === -1) {
-    const trimmed = text.slice(0, 140).trim();
-    return trimmed ? (trimmed.length < text.length ? trimmed + "..." : trimmed) : "";
-  }
-  const start = Math.max(0, index - radius);
-  const end = Math.min(text.length, index + email.length + radius);
-  let snippet = text.slice(start, end).replace(/\s+/g, " ").trim();
-  if (start > 0) snippet = "..." + snippet;
-  if (end < text.length) snippet = snippet + "...";
-  return snippet;
-};
+
 

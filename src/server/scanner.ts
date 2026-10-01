@@ -1,18 +1,19 @@
 import dns from "node:dns/promises";
-import type { ActiveOptions, RiskFinding, ScanProgress, ScanRequest, ScanResult, OriginCandidate, OriginCandidateDetailed, MxInfrastructureSummary, NarrativeVerdict } from "../shared/types.js";
+import type { ActiveOptions, RiskFinding, ScanProgress, ScanRequest, ScanResult, OriginCandidate, OriginCandidateDetailed, MxInfrastructureSummary, NarrativeVerdict, DomainProfile, DnsRecordSet, DnsHistoryEntry } from "../shared/types.js";
 import { serverConfig } from "./config.js";
-import { getDnsDeepScan, discoverSubdomains, probeDkimSelectors } from "./modules/dns.js";
+import { getDnsDeepScan, discoverSubdomains, probeDkimSelectors, emptyDns } from "./modules/dns.js";
 import { getDomainProfile } from "./modules/domain.js";
 
 
 import { collectHttp, inspectTls } from "./modules/http.js";
 import { collectCtSubdomains } from "./modules/passive.js";
+import { fetchDnsHistory } from "./modules/history.js";
 import { getIpProfile } from "./modules/ip.js";
 import { collectAllEvidence, collectHistoricalEvidence, collectMxEvidence } from "./modules/evidenceEngine.js";
 import { grabBanners, runDiscreteNmap, runTraceroute } from "./modules/active.js";
 import { buildInfrastructureSupplyChain } from "./modules/infrastructure.js";
 // removed import
-import { classifyProvider, delayByPolicy, limitList, normalizeTarget, unique } from "./utils.js";
+import { classifyProvider, delayByPolicy, limitList, normalizeTarget, unique, parseTargetContext } from "./utils.js";
 
 export type ProgressSink = (progress: Omit<ScanProgress, "scanId" | "at">) => void;
 
@@ -90,7 +91,7 @@ const risksFor = (result: Omit<ScanResult, "graph" | "risks">, dkimSelectors: st
 };
 
 export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise<ScanResult> => {
-  const domain = normalizeTarget(request.target);
+  const { type: targetType, normalized: domain, original } = parseTargetContext(request.target);
   const options = mergeOptions(request.options);
   
   if (request.mode === "active-discovery") {
@@ -114,27 +115,43 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
 
   emit({ status: "running", stage: "domain", message: "Collecting initial recon data concurrently...", percent: 5 });
 
-  const [
-    { profile, ownership },
-    dnsResult,
-    dkimSelectors,
-    ct,
-    bruteSubdomains,
-    { generateDnsAlterations, probeAxfr }
-  ] = await Promise.all([
-    getDomainProfile(domain, options.timeoutMs),
-    getDnsDeepScan(domain),
-    probeDkimSelectors(domain),
-    request.mode === "dns-only" ? Promise.resolve({ subdomains: [], timeline: [], source: undefined }) : collectCtSubdomains(domain, options.timeoutMs),
-    activeAllowed(request.mode) || request.mode === "active-discovery" ? discoverSubdomains(domain, options.dnsBruteforce, options.maxHosts) : Promise.resolve([]),
-    import("./modules/dns.js")
-  ]);
-
-  if (dkimSelectors.length) dnsResult.txt.push(...dkimSelectors.map((selector: string) => `dkim selector observed: ${selector}`));
   
-  if (options.dnsAxfr) {
-    dnsResult.zoneTransfer = await probeAxfr(domain, dnsResult.ns, options.dnsAxfr, options.timeoutMs);
+  
+  let profile: DomainProfile = { domain, statuses: [], nameservers: [], privacyDetected: false, importantDates: {}, sources: [] };
+  let ownership: any[] = [];
+  let dnsResult: DnsRecordSet = emptyDns();
+  let ct: any = { subdomains: [], timeline: [] };
+  let bruteSubdomains: string[] = [];
+  let dkimSelectors: string[] = [];
+  let historyEntries: DnsHistoryEntry[] = [];
+  const { generateDnsAlterations, probeAxfr } = await import("./modules/dns.js");
+
+  if (targetType === "ip") {
+    dnsResult.a = [domain];
+  } else {
+    const results = await Promise.all([
+      getDomainProfile(domain, options.timeoutMs),
+      getDnsDeepScan(domain),
+      probeDkimSelectors(domain),
+      request.mode === "dns-only" ? Promise.resolve({ subdomains: [], timeline: [], source: undefined }) : collectCtSubdomains(domain, options.timeoutMs),
+      activeAllowed(request.mode) || request.mode === "active-discovery" ? discoverSubdomains(domain, options.dnsBruteforce, options.maxHosts) : Promise.resolve([]),
+      fetchDnsHistory(domain, options.timeoutMs)
+    ]);
+    profile = results[0].profile;
+    ownership = results[0].ownership;
+    dnsResult = results[1];
+    dkimSelectors = results[2];
+    ct = results[3];
+    bruteSubdomains = results[4] as string[];
+    historyEntries = results[5];
+    
+    if (dkimSelectors.length) dnsResult.txt.push(...dkimSelectors.map((selector) => `dkim selector observed: ${selector}`));
+    if (options.dnsAxfr) {
+      dnsResult.zoneTransfer = await probeAxfr(domain, dnsResult.ns, options.dnsAxfr, options.timeoutMs);
+    }
   }
+
+
   
   let subdomains = limitList(unique([...ct.subdomains, ...bruteSubdomains]), options.maxHosts);
   if (options.dnsAlterations && subdomains.length > 0) {
@@ -396,5 +413,5 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     ]
   };
   emit({ status: "done", stage: "done", message: "Scan complete", percent: 100 });
-  return { ...partial, risks: [] } as unknown as ScanResult;
+  return { ...partial, risks: [], targetType, originalTarget: original, dnsHistory: historyEntries } as unknown as ScanResult;
 };

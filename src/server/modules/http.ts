@@ -206,31 +206,4 @@ export const inspectTls = (host: string, timeoutMs: number): Promise<TlsProfile 
     socket.on("error", () => resolve(undefined));
   });
 
-export const crawlForLinks = async (domain: string, maxDepth: number, timeoutMs: number) => {
-  const base = `https://${normalizeTarget(domain)}`;
-  const seeds = [base, `${base}/contact`, `${base}/about`, `${base}/team`, `${base}/privacy`, `${base}/sitemap.xml`, `${base}/robots.txt`];
-  const seen = new Set<string>();
-  const pages: Array<{ url: string; html: string }> = [];
-  const queue = seeds.map((url) => ({ url, depth: 0 }));
 
-  while (queue.length && pages.length < 10000) {
-    const item = queue.shift()!;
-    if (seen.has(item.url) || item.depth > maxDepth) continue;
-    seen.add(item.url);
-    try {
-      const html = await fetchText(item.url, timeoutMs);
-      pages.push({ url: item.url, html });
-      if (item.depth < maxDepth && !item.url.toLowerCase().endsWith(".pdf")) {
-        const links = Array.from(html.matchAll(/href=["']([^"']+)["']/gi))
-          .map((match) => match[1])
-          .filter((href) => href.startsWith("/") || href.includes(normalizeTarget(domain)))
-          .map((href) => (href.startsWith("/") ? `${base}${href}` : href))
-          .filter((href) => href.startsWith(base));
-        for (const link of unique(links).slice(0, 20)) queue.push({ url: link, depth: item.depth + 1 });
-      }
-    } catch {
-      // a continua crawl-ul
-    }
-  }
-  return pages.map((page) => ({ ...page, text: stripHtml(page.html) }));
-};

@@ -134,7 +134,10 @@ export const getIpProfile = async (ip: string, timeoutMs: number, fetchHostedDom
       const htResponse = await fetchText(`https://api.hackertarget.com/reversedns/?q=${ip}`, timeoutMs);
       if (htResponse && !htResponse.includes("API count exceeded")) {
         hostedDomains = htResponse.split("\n")
-          .map(line => line.split(" ")[0].trim())
+          .map(line => {
+            const parts = line.split(" ");
+            return parts.length > 1 ? parts[1].trim() : parts[0].trim();
+          })
           .filter(domain => domain && domain !== ip && domain !== "No" && !domain.includes("error"));
       }
     } catch (e) {}

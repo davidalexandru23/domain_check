@@ -466,7 +466,7 @@ export type ScanJob = {
 
 
 export type DnsHistoryEntry = {
-  type: "A" | "NS" | "MX" | "CERT";
+  type: "A" | "NS" | "MX" | "CERT" | "AAAA" | "CNAME" | "TXT" | string;
   value: string;
   firstSeen?: string;
   lastSeen?: string;

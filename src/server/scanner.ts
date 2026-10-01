@@ -154,6 +154,17 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
       historyEntries = [...historyEntries, ...certHistory];
     }
     
+    // Inject current DNS records into history for a complete view
+    const today = new Date().toISOString().split("T")[0];
+    const currentRecords: DnsHistoryEntry[] = [
+      ...dnsResult.a.map(ip => ({ type: "A" as const, value: ip, firstSeen: today, lastSeen: "Prezent", source: "DNS Live" })),
+      ...dnsResult.aaaa.map(ip => ({ type: "AAAA" as const, value: ip, firstSeen: today, lastSeen: "Prezent", source: "DNS Live" })),
+      ...dnsResult.mx.map(mx => ({ type: "MX" as const, value: `${mx.exchange} (pri ${mx.priority})`, firstSeen: today, lastSeen: "Prezent", source: "DNS Live" })),
+      ...dnsResult.ns.map(ns => ({ type: "NS" as const, value: ns, firstSeen: today, lastSeen: "Prezent", source: "DNS Live" })),
+      ...dnsResult.txt.map(txt => ({ type: "TXT" as const, value: txt.substring(0, 50) + (txt.length > 50 ? "..." : ""), firstSeen: today, lastSeen: "Prezent", source: "DNS Live" }))
+    ];
+    historyEntries = [...currentRecords, ...historyEntries];
+    
     if (dkimSelectors.length) dnsResult.txt.push(...dkimSelectors.map((selector) => `dkim selector observed: ${selector}`));
     if (options.dnsAxfr) {
       dnsResult.zoneTransfer = await probeAxfr(domain, dnsResult.ns, options.dnsAxfr, options.timeoutMs);

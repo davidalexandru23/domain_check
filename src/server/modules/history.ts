@@ -21,7 +21,7 @@ export const fetchDnsHistory = async (domain: string, timeoutMs: number): Promis
     const res = await fetch("https://api.mnemonic.no/pdns/v3/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: domain }),
+      body: JSON.stringify({ query: `*${domain}`, limit: 500 }),
       signal: controller.signal
     });
     
@@ -31,15 +31,15 @@ export const fetchDnsHistory = async (domain: string, timeoutMs: number): Promis
       const json = await res.json() as MnemonicResult;
       if (json.data && Array.isArray(json.data)) {
         for (const item of json.data) {
-          if (item.query.toLowerCase() === domain.toLowerCase()) {
-            history.push({
-              type: item.rrtype.toUpperCase() as any,
-              value: item.answer,
-              firstSeen: new Date(item.firstSeenTimestamp).toISOString().split('T')[0],
-              lastSeen: new Date(item.lastSeenTimestamp).toISOString().split('T')[0],
-              source: "Mnemonic PDNS"
-            });
-          }
+          const isExact = item.query.toLowerCase() === domain.toLowerCase();
+          const displayValue = isExact ? item.answer : `${item.answer} (${item.query})`;
+          history.push({
+            type: item.rrtype.toUpperCase() as any,
+            value: displayValue,
+            firstSeen: new Date(item.firstSeenTimestamp).toISOString().split('T')[0],
+            lastSeen: new Date(item.lastSeenTimestamp).toISOString().split('T')[0],
+            source: "Mnemonic PDNS"
+          });
         }
       }
     }

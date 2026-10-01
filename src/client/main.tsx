@@ -763,7 +763,13 @@ function DnsHistory({ result }: { result: ScanResult }) {
                 <td className="px-4 py-2 font-medium">{h.type}</td>
                 <td className="px-4 py-2">{h.value}</td>
                 <td className="px-4 py-2">{h.firstSeen || "-"}</td>
-                <td className="px-4 py-2">{h.lastSeen || "-"}</td>
+                <td className="px-4 py-2">
+                  {h.lastSeen === "Prezent" ? (
+                    <span className="px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-xs">Prezent</span>
+                  ) : (
+                    h.lastSeen || "-"
+                  )}
+                </td>
                 <td className="px-4 py-2 text-muted">{h.source}</td>
               </tr>
             ))}

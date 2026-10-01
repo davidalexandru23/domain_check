@@ -70,7 +70,7 @@ const rdapOrg = (rdap: RdapIpResponse): string | undefined => {
   return rdap.name ?? rdap.handle;
 };
 
-export const getIpProfile = async (ip: string, timeoutMs: number): Promise<IpProfile> => {
+export const getIpProfile = async (ip: string, timeoutMs: number, fetchHostedDomains: boolean = false): Promise<IpProfile> => {
   const sources: SourceRef[] = [];
   let geo: GeoPoint = {};
   let asn: AsnProfile = {};
@@ -127,7 +127,21 @@ export const getIpProfile = async (ip: string, timeoutMs: number): Promise<IpPro
   }
 
   const providerType = classifyProvider(asn.org);
+  let hostedDomains: string[] = [];
+  if (fetchHostedDomains) {
+    try {
+      const { fetchText } = await import("../utils.js");
+      const htResponse = await fetchText(`https://api.hackertarget.com/reversedns/?q=${ip}`, timeoutMs);
+      if (htResponse && !htResponse.includes("API count exceeded")) {
+        hostedDomains = htResponse.split("\n")
+          .map(line => line.split(" ")[0].trim())
+          .filter(domain => domain && domain !== ip && domain !== "No" && !domain.includes("error"));
+      }
+    } catch (e) {}
+  }
+
   return {
+    hostedDomains,
     ip,
     ptr,
     asn,

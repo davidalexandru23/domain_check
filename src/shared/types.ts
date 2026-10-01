@@ -139,6 +139,7 @@ export type NetworkLeaseSignal = {
 export type IpProfile = {
   ip: string;
   ptr: string[];
+  hostedDomains?: string[];
   asn: AsnProfile;
   geo: GeoPoint;
   providerType: "cloud" | "cdn" | "isp" | "enterprise" | "unknown";
@@ -465,7 +466,7 @@ export type ScanJob = {
 
 
 export type DnsHistoryEntry = {
-  type: "A" | "NS" | "MX";
+  type: "A" | "NS" | "MX" | "CERT";
   value: string;
   firstSeen?: string;
   lastSeen?: string;

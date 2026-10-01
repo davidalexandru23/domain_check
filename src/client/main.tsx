@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Activity, Building2, Globe2, Mail, MapPin, Network, Play, Radar, Shield, TerminalSquare, BookOpen, Clock, ArrowLeft, AlertCircle } from "lucide-react";
+import { Server,  Activity, Building2, Globe2, Mail, MapPin, Network, Play, Radar, Shield, TerminalSquare, BookOpen, Clock, ArrowLeft, AlertCircle } from "lucide-react";
 import type { ActiveOptions, ScanJob, ScanMode, ScanResult } from "../shared/types";
 import { Documentation } from "./Documentation";
 import "./styles.css";
@@ -637,6 +637,53 @@ function syntaxHighlight(json: string) {
   });
 }
 
+
+function IpContextDetails({ result }: { result: ScanJob["result"] }) {
+  if (!result || result.targetType !== "ip" || !result.ips || result.ips.length === 0) return null;
+  const ip = result.ips[0];
+  if (!ip.hostedDomains || ip.hostedDomains.length === 0) return null;
+  return (
+    <Section title="Domenii Găzduite (Reverse IP)" icon={<Server size={18} />}>
+      <div className="bg-panel2 p-4 rounded border border-line flex flex-wrap gap-2">
+        {ip.hostedDomains.map((d: string, i: number) => (
+          <span key={i} className="px-2 py-1 bg-surface rounded text-sm text-cyanx border border-cyanx/20">
+            {d}
+          </span>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+
+
+function EmailPoliciesCard({ result }: { result: ScanJob["result"] }) {
+  if (!result || result.targetType !== "email") return null;
+  
+  const hasSpf = result.dns.txt.some(t => t.toLowerCase().includes("v=spf1"));
+  const hasDmarc = result.dns.txt.some(t => t.toLowerCase().includes("v=dmarc1"));
+  
+  return (
+    <Section title="Politici Securitate Email (DMARC / SPF)" icon={<Shield size={18} />}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={`p-4 rounded border ${hasSpf ? 'bg-green-900/20 border-green-500/30' : 'bg-red-900/20 border-red-500/30'}`}>
+          <h3 className="font-semibold text-lg mb-2">Sender Policy Framework (SPF)</h3>
+          <p className="text-sm opacity-90">
+            {hasSpf ? "Domeniul are o politică SPF configurată, prevenind trimiterea de emailuri neautorizate." : "Domeniul NU are politică SPF. Există risc major de spoofing."}
+          </p>
+        </div>
+        <div className={`p-4 rounded border ${hasDmarc ? 'bg-green-900/20 border-green-500/30' : 'bg-red-900/20 border-red-500/30'}`}>
+          <h3 className="font-semibold text-lg mb-2">DMARC Policy</h3>
+          <p className="text-sm opacity-90">
+            {hasDmarc ? "Domeniul are o politică DMARC configurată pentru instruirea serverelor de destinație." : "Domeniul NU are politică DMARC."}
+          </p>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+
 function RawJsonOutput({ result }: { result: ScanJob["result"] }) {
   if (!result) return null;
   const jsonStr = JSON.stringify(result, null, 2);
@@ -752,17 +799,24 @@ function TargetContextBanner({ result }: { result: ScanResult }) {
 function Results({ job }: { job: ScanJob }) {
   if (!job.result) return null;
   const result = job.result;
+  const isIp = result.targetType === "ip";
+  const isEmail = result.targetType === "email";
+  
   return (
     <div className="mt-6 space-y-8">
       <TargetContextBanner result={result} />
       <ConclusionDetails result={result} />
+      
+      <EmailPoliciesCard result={result} />
+      <IpContextDetails result={result} />
+      
       <ScanSummary result={result} />
-      <AttributionSummary result={result} />
-      <OriginCandidates result={result} />
+      {!isIp && <AttributionSummary result={result} />}
+      {!isIp && <OriginCandidates result={result} />}
       <EvidenceMatrix result={result} />
       <InfrastructureChain result={result} />
-      <HistoricalData result={result} />
-      <DnsHistory result={result} />
+      {!isIp && <HistoricalData result={result} />}
+      {!isIp && <DnsHistory result={result} />}
       <RawEvidence result={result} />
       <RawJsonOutput result={result} />
     </div>

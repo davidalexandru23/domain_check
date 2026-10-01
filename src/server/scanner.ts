@@ -144,6 +144,15 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     ct = results[3];
     bruteSubdomains = results[4] as string[];
     historyEntries = results[5];
+    if (ct.timeline && ct.timeline.length > 0) {
+      const certHistory = ct.timeline.map((t: any) => ({
+        type: "CERT" as any,
+        value: t.value.split(",")[0] || t.value,
+        firstSeen: t.date.split("T")[0],
+        source: "crt.sh"
+      }));
+      historyEntries = [...historyEntries, ...certHistory];
+    }
     
     if (dkimSelectors.length) dnsResult.txt.push(...dkimSelectors.map((selector) => `dkim selector observed: ${selector}`));
     if (options.dnsAxfr) {
@@ -175,7 +184,7 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
   }
   let ips = [];
   for (const ip of limitList(unique(resolvedIps), options.maxHosts)) {
-    ips.push(await getIpProfile(ip, options.timeoutMs));
+    ips.push(await getIpProfile(ip, options.timeoutMs, targetType === "ip"));
     await delayByPolicy(options.rateLimit);
   }
 

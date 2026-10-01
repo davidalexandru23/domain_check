@@ -76,16 +76,39 @@ export const fetchDnsHistory = async (domain: string, timeoutMs: number): Promis
 
   await Promise.all([fetchMnemonic(), fetchRobtex()]);
 
-  // Remove exact duplicates
-  const uniqueHistory: DnsHistoryEntry[] = [];
-  const seen = new Set();
+  // Merge duplicates across sources
+  const merged = new Map<string, DnsHistoryEntry>();
+
   for (const h of history) {
-    const key = `${h.type}|${h.value}|${h.source}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      uniqueHistory.push(h);
+    if (!h.value || !h.type) continue;
+    const key = `${h.type}|${h.value.toLowerCase()}`;
+    const existing = merged.get(key);
+
+    if (existing) {
+      // Merge dates
+      if (h.firstSeen && existing.firstSeen && new Date(h.firstSeen) < new Date(existing.firstSeen)) {
+        existing.firstSeen = h.firstSeen;
+      }
+      
+      // For lastSeen, "Prezent" is always the latest.
+      if (h.lastSeen === "Prezent" || existing.lastSeen === "Prezent") {
+        existing.lastSeen = "Prezent";
+      } else if (h.lastSeen && existing.lastSeen && new Date(h.lastSeen) > new Date(existing.lastSeen)) {
+        existing.lastSeen = h.lastSeen;
+      } else if (h.lastSeen && !existing.lastSeen) {
+        existing.lastSeen = h.lastSeen;
+      }
+
+      // Merge sources
+      if (h.source && !existing.source.includes(h.source)) {
+        existing.source += `, ${h.source}`;
+      }
+    } else {
+      merged.set(key, { ...h });
     }
   }
+
+  const uniqueHistory = Array.from(merged.values());
 
   // Sort by firstSeen descending
   return uniqueHistory.sort((a, b) => new Date(b.firstSeen || 0).getTime() - new Date(a.firstSeen || 0).getTime());

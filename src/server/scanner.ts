@@ -147,9 +147,10 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     if (ct.timeline && ct.timeline.length > 0) {
       const certHistory = ct.timeline.map((t: any) => ({
         type: "CERT" as any,
-        value: t.value.split(",")[0] || t.value,
+        value: t.value,
         firstSeen: t.date.split("T")[0],
-        source: "crt.sh"
+        lastSeen: t.date.split("T")[0],
+        source: "Certificates"
       }));
       historyEntries = [...historyEntries, ...certHistory];
     }

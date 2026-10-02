@@ -45,11 +45,11 @@ export const fetchDnsHistory = async (domain: string, timeoutMs: number): Promis
     } catch (e) {}
   };
 
-  const fetchRobtex = async () => {
+  const fetchRobtex = async (queryDomain: string, label: string) => {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
-      const res = await fetch(`https://freeapi.robtex.com/pdns/forward/${domain}`, {
+      const res = await fetch(`https://freeapi.robtex.com/pdns/forward/${queryDomain}`, {
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -63,7 +63,7 @@ export const fetchDnsHistory = async (domain: string, timeoutMs: number): Promis
             const data = JSON.parse(line);
             history.push({
               type: data.rrtype.toUpperCase() as any,
-              value: data.rrdata,
+              value: label ? `${data.rrdata} (${label})` : data.rrdata,
               firstSeen: new Date(data.time_first * 1000).toISOString().split('T')[0],
               lastSeen: new Date(data.time_last * 1000).toISOString().split('T')[0],
               source: "Robtex"
@@ -74,17 +74,31 @@ export const fetchDnsHistory = async (domain: string, timeoutMs: number): Promis
     } catch (e) {}
   };
 
-  await Promise.all([fetchMnemonic(), fetchRobtex()]);
+  await Promise.all([
+    fetchMnemonic(),
+    fetchRobtex(domain, ""),
+    fetchRobtex(`mail.${domain}`, "mail.*"),
+    fetchRobtex(`webmail.${domain}`, "webmail.*")
+  ]);
 
   // Merge duplicates across sources
   const merged = new Map<string, DnsHistoryEntry>();
 
   for (const h of history) {
     if (!h.value || !h.type) continue;
-    const key = `${h.type}|${h.value.toLowerCase()}`;
+    
+    // Normalize value to remove priority markings like " (pri 10)" and trailing dots
+    let normValue = h.value.toLowerCase().replace(/ \(pri \d+\)/g, "").replace(/\.$/, "").trim();
+    
+    const key = `${h.type}|${normValue}`;
     const existing = merged.get(key);
 
     if (existing) {
+      // Retain priority string if available from DNS Live
+      if (h.value.includes("(pri ") && !existing.value.includes("(pri ")) {
+        existing.value = h.value;
+      }
+      
       // Merge dates
       if (h.firstSeen && existing.firstSeen && new Date(h.firstSeen) < new Date(existing.firstSeen)) {
         existing.firstSeen = h.firstSeen;

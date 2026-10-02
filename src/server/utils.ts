@@ -105,3 +105,13 @@ export const stripHtml = (html: string) => html.replace(/<script[\s\S]*?<\/scrip
 
 
 
+
+export const processInChunks = async <T, R>(items: T[], chunkSize: number, asyncFn: (item: T) => Promise<R>): Promise<R[]> => {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    const chunkResults = await Promise.all(chunk.map(asyncFn));
+    results.push(...chunkResults);
+  }
+  return results;
+};

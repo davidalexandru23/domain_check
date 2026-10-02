@@ -12,8 +12,7 @@ import { getIpProfile } from "./modules/ip.js";
 import { collectAllEvidence, collectHistoricalEvidence, collectMxEvidence } from "./modules/evidenceEngine.js";
 import { grabBanners, runDiscreteNmap, runTraceroute } from "./modules/active.js";
 import { buildInfrastructureSupplyChain } from "./modules/infrastructure.js";
-// removed import
-import { classifyProvider, delayByPolicy, limitList, normalizeTarget, unique, parseTargetContext } from "./utils.js";
+import { classifyProvider, delayByPolicy, limitList, normalizeTarget, unique, parseTargetContext, processInChunks } from "./utils.js";
 
 export type ProgressSink = (progress: Omit<ScanProgress, "scanId" | "at">) => void;
 
@@ -194,24 +193,36 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     }
     await delayByPolicy(options.rateLimit);
   }
-  let ips = [];
-  for (const ip of limitList(unique(resolvedIps), options.maxHosts)) {
-    ips.push(await getIpProfile(ip, options.timeoutMs, targetType === "ip"));
+  // Memoized IP profiling dictionary to prevent duplicate queries
+  const ipCache = new Map<string, Promise<any>>();
+  const getCachedIpProfile = (ip: string, isTarget = false) => {
+    if (!ipCache.has(ip)) {
+      ipCache.set(ip, getIpProfile(ip, options.timeoutMs, isTarget));
+    }
+    return ipCache.get(ip);
+  };
+
+  const initialIpsToScan = limitList(unique(resolvedIps), options.maxHosts);
+  let ips: any[] = await processInChunks(initialIpsToScan, 5, async (ip) => {
+    const prof = await getCachedIpProfile(ip, targetType === "ip");
     await delayByPolicy(options.rateLimit);
-  }
+    return prof;
+  });
 
   emit({ status: "running", stage: "http", message: "Collecting HTTP and TLS posture", percent: 50 });
-  const http = [];
-  const tls = [];
+  const http: any[] = [];
+  const tls: any[] = [];
   if (request.mode !== "dns-only") {
-    for (const host of allHosts.slice(0, Math.min(options.maxHosts, 20))) {
-      http.push(...(await collectHttp(host, options)));
+    const hostsToScan = allHosts.slice(0, Math.min(options.maxHosts, 20));
+    await processInChunks(hostsToScan, 10, async (host) => {
+      const httpRes = await collectHttp(host, options);
+      http.push(...httpRes);
       if (options.tlsInspect) {
         const profile = await inspectTls(host, options.timeoutMs);
         if (profile) tls.push(profile);
       }
       await delayByPolicy(options.rateLimit);
-    }
+    });
   }
 
   emit({ status: "running", stage: "infrastructure", message: "Tracing infrastructure supply chain", percent: 58 });
@@ -219,7 +230,7 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
   ips = supplyChain.ips;
 
   emit({ status: "running", stage: "network", message: "Running controlled network collection", percent: 65 });
-  const ports = [];
+  const ports: any[] = [];
   const banners = [];
   const network = [];
   if (activeAllowed(request.mode)) {
@@ -267,30 +278,11 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     }) : [])
   ]);
 
-  for (const ip of candidateIps) {
-      try {
-          const profile = ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs);
-          const orgName = (profile.asn.org ?? profile.networkName ?? "").toLowerCase();
-          const isCdn = cdnKeywords.some(kw => orgName.includes(kw));
-          
-          if (!isCdn && orgName) {
-              origins.push({
-                  ip,
-                  source: Array.from(candidateSources.get(ip) ?? ["DNS leak"]).join(", "),
-                  provider: profile.asn.org ?? profile.networkName ?? "Unknown",
-                  confidence: classifyProvider(profile.asn.org) === "cloud" ? "medium" : "high"
-              });
-          }
-      } catch {
-          // ignore
-      }
-  }
-
   emit({ status: "running", stage: "asm", message: "Building ASM graph and risk findings", percent: 90 });
-  
-  const candidates: OriginCandidateDetailed[] = [];
-  for (const ip of candidateIps) {
-    const ipProfile = ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs);
+  const candidates: any[] = [];
+  await processInChunks(Array.from(candidateIps), 10, async (ip: string) => {
+    const ipProfile = await getCachedIpProfile(ip);
+    if (!ips.find((item: any) => item.ip === ip)) ips.push(ipProfile);
     
     // Etapa 6: Collect historical/external evidence
     let historicalData: Awaited<ReturnType<typeof collectHistoricalEvidence>> | undefined;
@@ -317,14 +309,12 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
       subdomainHosts: Array.from(candidateSources.get(ip) ?? []),
       registrantOrg: profile.registrantOrg,
       timeoutMs: options.timeoutMs,
-      // Etapa 6 data
       ctCertificates: historicalData?.ctCerts,
       peeringDbInfo: historicalData?.peeringDb,
-      rpkiStatus: historicalData?.rpki,
-      historicalPrefixes: historicalData?.historicalPrefixes
+      // ripeContacts: historicalData?.ripeContacts
     });
     candidates.push(candidate);
-  }
+  });
 
   // Determine top candidate by score (Etapa 9 Heuristics & Etapa 11 Separation)
   candidates.sort((a, b) => b.confidences.origin - a.confidences.origin);
@@ -362,11 +352,10 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
   candidates.splice(0, candidates.length, ...finalCandidates);
 
 
-  const mxCandidates = [];
-  const mxProfiles = [];
-  for (const mx of dnsResult.mx) {
-    // find IPs for this MX hostname
-    let mxTargetIps = [];
+  const mxCandidates: any[] = [];
+  const mxProfiles: any[] = [];
+  await processInChunks(dnsResult.mx, 5, async (mx: any) => {
+    let mxTargetIps: string[] = [];
     if (mx.exchange) {
       try {
         const dnsModule = await import("node:dns/promises");
@@ -374,9 +363,10 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
         mxTargetIps.push(...mxA);
       } catch { /* ignore */ }
     }
-    for (const ip of unique(mxTargetIps)) {
+    await processInChunks(unique(mxTargetIps), 5, async (ip) => {
       try {
-        const profile = ips.find((item) => item.ip === ip) ?? await getIpProfile(ip, options.timeoutMs);
+        const profile = await getCachedIpProfile(ip);
+        if (!ips.find((item: any) => item.ip === ip)) ips.push(profile);
         mxProfiles.push(profile);
         const mxCandidate = await collectMxEvidence({
           domain, ip, ipProfile: profile, dnsResult, httpResults: http, tlsResults: tls, ports, mxIps: Array.from(mxIps), subdomainHosts: Array.from(candidateSources.get(ip) ?? []), registrantOrg: undefined, timeoutMs: options.timeoutMs
@@ -385,8 +375,8 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
       } catch {
         // a continua fara profil MX
       }
-    }
-  }
+    });
+  });
 
   const mxInfrastructure: MxInfrastructureSummary = {
     domain,
@@ -405,7 +395,7 @@ export const runScan = async (request: ScanRequest, emit: ProgressSink): Promise
     classification: topOriginCandidate?.classification ?? "unknown",
     confidenceScore: topOriginCandidate?.confidences.origin ?? 0,
     explanation: topOriginCandidate?.explanation ?? "No evidence-backed origin candidate could be selected from the observed DNS, HTTP, TLS and network data.",
-    keyEvidence: topOriginCandidate ? topOriginCandidate.supportingSignals.map(s => s.title) : []
+    keyEvidence: topOriginCandidate ? topOriginCandidate.supportingSignals.map((s: any) => s.title) : []
   };
 
   const partial = {
